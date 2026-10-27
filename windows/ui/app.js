@@ -265,8 +265,16 @@ if (TAURI) {
   document.querySelector(".caption").style.visibility = "hidden";
 }
 
+// Slides are laid out for 1200×790; scale everything with the window (small laptops, maximized).
+let uiScale = 1;
+function fitToWindow() {
+  uiScale = Math.max(0.6, Math.min(1.6, innerWidth / 1200, innerHeight / 790));
+  document.body.style.zoom = uiScale;
+}
+fitToWindow();
 let resizeTimer;
 window.addEventListener("resize", () => {
+  fitToWindow();
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => { if (state.slides[state.index] === "calendar") render(); }, 200);
 });

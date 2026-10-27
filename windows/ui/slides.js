@@ -371,7 +371,7 @@ function heatmapHTML(r) {
     return q < 0.25 ? 1 : q < 0.5 ? 2 : q < 0.8 ? 3 : 4;
   };
   const colors = ["rgba(255,255,255,.07)", "color-mix(in srgb, var(--accent) 30%, transparent)", "color-mix(in srgb, var(--accent) 50%, transparent)", "color-mix(in srgb, var(--accent) 75%, transparent)", "var(--accent)"];
-  const cell = Math.min(17, Math.floor((window.innerWidth - 144 - (weeks - 1) * 3) / weeks));
+  const cell = Math.min(17, Math.floor((innerWidth / uiScale - 144 - (weeks - 1) * 3) / weeks));
   let cells = "";
   for (let w = 0; w < weeks; w++) for (let d = 0; d < 7; d++) {
     const k = start + w * 7 + d;

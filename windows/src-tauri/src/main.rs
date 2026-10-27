@@ -105,6 +105,20 @@ fn run_cli(args: &[String]) -> bool {
     true
 }
 
+/// The layout is designed at 1200×790; on smaller screens (laptops at 125–150% scaling) shrink
+/// the window to fit, keeping the aspect ratio. The page scales its content to the window.
+fn fit_to_screen(app: &tauri::App) {
+    use tauri::Manager;
+    let Some(win) = app.get_webview_window("main") else { return };
+    let Ok(Some(monitor)) = win.current_monitor() else { return };
+    let screen = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+    let k = (screen.width * 0.92 / 1200.0).min(screen.height * 0.92 / 790.0);
+    if k < 1.0 {
+        let _ = win.set_size(tauri::LogicalSize::new((1200.0 * k).round(), (790.0 * k).round()));
+        let _ = win.center();
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if run_cli(&args) {
@@ -113,6 +127,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .setup(|app| {
+            fit_to_screen(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![start_scan, get_report, save_png])
         .run(tauri::generate_context!())
         .expect("error while running AI Wrapped");
