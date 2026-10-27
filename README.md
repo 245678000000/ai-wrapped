@@ -1,6 +1,8 @@
 # AI 年度报告 (AI Wrapped)
 
-本地 macOS 应用，读取你电脑上各个 coding agent 的聊天记录，做成一份可以翻页的年度回顾。数据只在本机读取。
+读取你电脑上各个 AI agent 的聊天记录，做成一份可以翻页的年度回顾。有 macOS 和 Windows 两个版本，数据只在本机读取。
+
+**Windows 下载：** 到 [Releases](../../releases/latest) 下载 `AI-Wrapped-*-setup.exe`（安装包）或 `AI-Wrapped-*-portable.exe`（免安装）。需要 Windows 10/11；应用未做代码签名，首次运行若出现 SmartScreen 提示，点“更多信息 → 仍要运行”。
 
 <p align="center">
   <img src="docs/screenshots/cover.webp" width="49%" alt="封面">
@@ -45,6 +47,8 @@ Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把�
 
 ## 构建
 
+### macOS（Swift / SwiftUI）
+
 需要 macOS 15+ 和 Swift 6 工具链（Command Line Tools 即可，不需要 Xcode）。
 
 ```bash
@@ -53,12 +57,19 @@ Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把�
 
 产物在 `dist/AI 年度报告.app`。
 
-## 命令行模式
-
 ```bash
 .build/release/AIWrapped --dump --year 2026      # 打印统计数字
 .build/release/AIWrapped --dump --all            # 全部时间
 .build/release/AIWrapped --snapshot out/ --year 2026   # 每一页导出 PNG
+```
+
+### Windows（Tauri：Rust + WebView2）
+
+代码在 [`windows/`](windows)：`src-tauri/src` 是扫描与统计（和 macOS 版同一套规则，路径按 Windows 习惯：`%USERPROFILE%\.claude`、`%APPDATA%\Cursor` 等），`ui/` 是界面。推送到 `main` 时 GitHub Actions 会在 Windows 上编译、用样例数据自测扫描、启动应用截图；推送 `v*` 标签会发布 Release。
+
+```bash
+cd windows && npm ci && npx tauri build                          # 在 Windows 上打包安装程序
+cd windows/src-tauri && cargo run --profile fast -- --dump --all  # 任意平台：打印扫描结果
 ```
 
 ## 操作

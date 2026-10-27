@@ -1,0 +1,130 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows/src-tauri -> target
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Tauri CLI
+        run: npm ci
+
+      - name: Build installer
+        run: npx tauri build
+
+      - name: Collect binaries
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item src-tauri/target/release/ai-wrapped.exe "out/AI-Wrapped-$version-portable.exe"
+          Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | ForEach-Object {
+            Copy-Item $_.FullName "out/AI-Wrapped-$version-setup.exe"
+          }
+          Get-ChildItem out | Format-Table Name, Length
+
+      # Seed a few agents' logs in this machine's user folder, then check the scanner finds them.
+      - name: Smoke test the scanner
+        shell: pwsh
+        run: |
+          $h = $env:USERPROFILE
+          function Write-Lines($path, $lines) {
+            New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
+            [IO.File]::WriteAllLines($path, $lines)
+          }
+          Write-Lines "$h\.claude\projects\C--work-demo\11111111-1111-1111-1111-111111111111.jsonl" @(
+            '{"type":"user","sessionId":"cc-1","uuid":"u1","timestamp":"2026-10-20T08:00:00.000Z","cwd":"C:\\work\\demo","message":{"role":"user","content":"帮我写一个 Windows 安装脚本"}}',
+            '{"type":"assistant","sessionId":"cc-1","uuid":"a1","timestamp":"2026-10-20T08:00:05.000Z","cwd":"C:\\work\\demo","message":{"id":"msg_1","model":"claude-opus-5-5","role":"assistant","usage":{"input_tokens":1200,"output_tokens":300,"cache_read_input_tokens":5000,"cache_creation_input_tokens":800},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"dir"}}]}}',
+            '{"type":"user","sessionId":"cc-1","uuid":"u2","timestamp":"2026-10-21T22:10:00.000Z","cwd":"C:\\work\\demo","message":{"role":"user","content":"再加上卸载功能"}}'
+          )
+          Write-Lines "$h\.codex\sessions\2026\10\22\rollout-2026-10-22T09-00-00-cx-1.jsonl" @(
+            '{"timestamp":"2026-10-22T01:00:00.000Z","type":"session_meta","payload":{"id":"cx-1","timestamp":"2026-10-22T01:00:00.000Z","cwd":"C:\\work\\api","thread_source":"user"}}',
+            '{"timestamp":"2026-10-22T01:00:01.000Z","type":"turn_context","payload":{"model":"gpt-6-astra"}}',
+            '{"timestamp":"2026-10-22T01:00:02.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"text","text":"重构这个接口"}]}}}',
+            '{"timestamp":"2026-10-22T01:00:09.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9000,"cached_input_tokens":6000,"output_tokens":700,"total_tokens":9700}}}}'
+          )
+          Write-Lines "$h\.grok\sessions\C%3A%5Cwork%5Cweb\g-1\updates.jsonl" @(
+            '{"timestamp":1792900000,"method":"session/update","params":{"sessionId":"g-1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"做一个登录页"},"_meta":{"promptIndex":0}}}}',
+            '{"timestamp":1792900030,"method":"session/update","params":{"sessionId":"g-1","_meta":{"eventId":"e-1"},"update":{"sessionUpdate":"turn_completed","usage":{"inputTokens":20000,"outputTokens":800,"totalTokens":20800,"cachedReadTokens":15000,"modelUsage":{"grok-4.7-build":{"inputTokens":20000,"outputTokens":800,"totalTokens":20800,"cachedReadTokens":15000}}}}}}'
+          )
+          $report = "$env:RUNNER_TEMP\report.json"
+          $p = Start-Process "src-tauri/target/release/ai-wrapped.exe" -ArgumentList "--dump-json", $report, "--all" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "scanner exited with $($p.ExitCode)" }
+          $r = Get-Content $report -Raw | ConvertFrom-Json
+          "agents: " + (($r.agents | ForEach-Object { "$($_.name) tokens=$($_.tokens) prompts=$($_.prompts)" }) -join "; ")
+          "tokens=$($r.tokens.total) prompts=$($r.promptCount) sessions=$($r.sessionCount)"
+          if ($r.agents.Count -lt 3) { throw "expected 3 agents, got $($r.agents.Count)" }
+          if ($r.promptCount -ne 4) { throw "expected 4 prompts, got $($r.promptCount)" }
+          # Claude 7,300 + Codex 9,700 (cache folded into input) + Grok 20,800 (same)
+          if ($r.tokens.total -ne 37800) { throw "expected 37800 tokens, got $($r.tokens.total)" }
+          if ($r.tokens.cacheRead -ne 26000) { throw "expected 26000 cache reads, got $($r.tokens.cacheRead)" }
+          Copy-Item $report out/
+
+      - name: Launch and screenshot
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Snap($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("out/$name.png")
+          }
+          $app = Start-Process "src-tauri/target/release/ai-wrapped.exe" -PassThru
+          Start-Sleep -Seconds 15
+          Snap "screenshot-cover"
+          $shell = New-Object -ComObject WScript.Shell
+          $null = $shell.AppActivate($app.Id)
+          Start-Sleep -Seconds 1
+          $shell.SendKeys("{RIGHT}{RIGHT}")
+          Start-Sleep -Seconds 4
+          Snap "screenshot-tokens"
+          if ($app.HasExited) { throw "app exited early with $($app.ExitCode)" }
+          Stop-Process -Id $app.Id
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-wrapped-windows
+          path: windows/out/
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = Get-ChildItem out/*.exe | ForEach-Object { $_.FullName }
+          $notes = @"
+          ## Windows 版
+
+          - **AI-Wrapped-*-setup.exe**：安装包（推荐），会装到开始菜单。
+          - **AI-Wrapped-*-portable.exe**：免安装，双击直接运行。
+
+          需要 Windows 10/11（自带 WebView2）。所有数据只在本机读取，不上传任何内容。
+          首次运行如果出现 SmartScreen 提示，点“更多信息 → 仍要运行”（应用未做代码签名）。
+          "@
+          gh release create $tag @assets --title "AI 年度报告 $tag" --notes $notes

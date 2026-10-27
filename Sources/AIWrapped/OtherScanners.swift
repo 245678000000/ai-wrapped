@@ -29,6 +29,7 @@ enum CodexScanner {
     static func scan(_ url: URL) -> (String, ScanResult) {
         var result = ScanResult()
         var sessionId = url.deletingPathExtension().lastPathComponent
+        var seenMeta = false
         var cwd: String?
         var userFacing = true
         var subagentName: String?
@@ -55,7 +56,10 @@ enum CodexScanner {
             let time = parseISO8601(obj["timestamp"] as? String) ?? 0
 
             switch obj["type"] as? String {
-            case "session_meta":
+            // Sub-agent rollouts embed their parent's session_meta after their own; only the
+            // first one describes this file.
+            case "session_meta" where !seenMeta:
+                seenMeta = true
                 if let id = payload["id"] as? String { sessionId = id }
                 cwd = payload["cwd"] as? String
                 startTime = parseISO8601(payload["timestamp"] as? String) ?? time
