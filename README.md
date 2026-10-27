@@ -2,7 +2,10 @@
 
 读取你电脑上各个 AI agent 的聊天记录，做成一份可以翻页的年度回顾。有 macOS 和 Windows 两个版本，数据只在本机读取。
 
-**Windows 下载：** 到 [Releases](../../releases/latest) 下载 `AI-Wrapped-*-setup.exe`（安装包）或 `AI-Wrapped-*-portable.exe`（免安装）。需要 Windows 10/11；应用未做代码签名，首次运行若出现 SmartScreen 提示，点“更多信息 → 仍要运行”。
+**下载：** 到 [Releases](../../releases/latest) 下载对应系统的文件。
+
+- **macOS 15+**（Apple 芯片和 Intel）：`AI-Wrapped-*-mac.dmg`，打开后拖进「应用程序」。应用未经 Apple 公证，第一次打开若提示无法验证，到「系统设置 → 隐私与安全性」点「仍要打开」。
+- **Windows 10/11**：`AI-Wrapped-*-setup.exe`（安装包）或 `AI-Wrapped-*-portable.exe`（免安装）。首次运行若出现 SmartScreen 提示，点“更多信息 → 仍要运行”。
 
 <p align="center">
   <img src="docs/screenshots/cover.webp" width="49%" alt="封面">
@@ -57,7 +60,7 @@ Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把�
 ./build-app.sh
 ```
 
-产物在 `dist/AI 年度报告.app`。
+产物在 `dist/AI 年度报告.app`。`./build-app.sh --dmg` 另外打包 DMG，`UNIVERSAL=1` 同时编译 Apple 芯片和 Intel 版本。
 
 ```bash
 .build/release/AIWrapped --dump --year 2026      # 打印统计数字
@@ -68,7 +71,7 @@ Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把�
 
 ### Windows（Tauri：Rust + WebView2）
 
-代码在 [`windows/`](windows)：`src-tauri/src` 是扫描与统计（和 macOS 版同一套规则，路径按 Windows 习惯：`%USERPROFILE%\.claude`、`%APPDATA%\Cursor` 等），`ui/` 是界面。推送到 `main` 时 GitHub Actions 会在 Windows 上编译、用样例数据自测扫描、启动应用截图；推送 `v*` 标签会发布 Release。
+代码在 [`windows/`](windows)：`src-tauri/src` 是扫描与统计（和 macOS 版同一套规则，路径按 Windows 习惯：`%USERPROFILE%\.claude`、`%APPDATA%\Cursor` 等），`ui/` 是界面。推送到 `main` 时 GitHub Actions 会分别在 Windows 和 macOS 上编译、用样例数据自测扫描并截图；推送 `v*` 标签会把 Windows 安装包和 macOS DMG 一起发布到 Release。
 
 ```bash
 cd windows && npm ci && npx tauri build                          # 在 Windows 上打包安装程序

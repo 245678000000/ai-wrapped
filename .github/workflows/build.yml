@@ -1,9 +1,9 @@
-name: Windows
+name: Build
 
 on:
   push:
     branches: [main]
-    paths: ["windows/**", ".github/workflows/windows.yml"]
+    paths: ["windows/**", "Sources/**", "Package.swift", "build-app.sh", ".github/workflows/**"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     defaults:
       run:
@@ -107,24 +107,81 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ai-wrapped-windows
+          name: windows
           path: windows/out/
 
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version && xcrun --show-sdk-version
+
+      - name: Build universal app and DMG
+        run: UNIVERSAL=1 ./build-app.sh --dmg
+
+      # Point the app at a throwaway home with one seeded Claude Code session.
+      - name: Smoke test and render slides
+        run: |
+          H="$(mktemp -d)"
+          mkdir -p "$H/.claude/projects/demo"
+          cat > "$H/.claude/projects/demo/s1.jsonl" <<'EOF'
+          {"type":"user","sessionId":"s1","uuid":"u1","timestamp":"2026-10-20T08:00:00.000Z","cwd":"/Users/demo/app","message":{"role":"user","content":"帮我做一个 Mac 小工具"}}
+          {"type":"assistant","sessionId":"s1","uuid":"a1","timestamp":"2026-10-20T08:00:05.000Z","cwd":"/Users/demo/app","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":1200,"output_tokens":300,"cache_read_input_tokens":5000,"cache_creation_input_tokens":800},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}
+          {"type":"user","sessionId":"s1","uuid":"u2","timestamp":"2026-10-21T22:10:00.000Z","cwd":"/Users/demo/app","message":{"role":"user","content":"再加个设置页"}}
+          EOF
+          BIN="dist/AI 年度报告.app/Contents/MacOS/AIWrapped"
+          lipo -archs "$BIN"
+          out="$(HOME="$H" CFFIXED_USER_HOME="$H" "$BIN" --dump --all)"
+          echo "$out"
+          grep -q "Claude Code tokens=7300 sessions=1 prompts=2" <<< "$out"
+          mkdir -p out
+          HOME="$H" CFFIXED_USER_HOME="$H" "$BIN" --snapshot out/slides --all
+          cp dist/*.dmg out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $assets = Get-ChildItem out/*.exe | ForEach-Object { $_.FullName }
-          $notes = @"
-          ## Windows 版
+          ls -la assets
+          cat > notes.md <<'EOF'
+          ## 下载
 
-          - **AI-Wrapped-*-setup.exe**：安装包（推荐），会装到开始菜单。
-          - **AI-Wrapped-*-portable.exe**：免安装，双击直接运行。
+          | 系统 | 文件 | 说明 |
+          |---|---|---|
+          | macOS 15 及以上（Apple 芯片和 Intel） | `AI-Wrapped-*-mac.dmg` | 打开后把「AI 年度报告」拖进「应用程序」 |
+          | Windows 10/11 | `AI-Wrapped-*-setup.exe` | 安装包（推荐） |
+          | Windows 10/11 | `AI-Wrapped-*-portable.exe` | 免安装，双击运行 |
 
-          需要 Windows 10/11（自带 WebView2）。所有数据只在本机读取，不上传任何内容。
-          首次运行如果出现 SmartScreen 提示，点“更多信息 → 仍要运行”（应用未做代码签名）。
-          "@
-          gh release create $tag @assets --title "AI 年度报告 $tag" --notes $notes
+          ## 第一次打开
+
+          应用没有做代码签名和公证：
+
+          - **macOS**：如果提示“无法验证开发者”或“已损坏”，到「系统设置 → 隐私与安全性」底部点「仍要打开」；或在终端运行 `xattr -dr com.apple.quarantine "/Applications/AI 年度报告.app"`。
+          - **Windows**：SmartScreen 提示时点「更多信息 → 仍要运行」。
+
+          ## 更新内容
+
+          - macOS 新增**周报和月报**：封面右上角选“本周 / 上周 / 本月”，或点“本周小结”。四个核心数字都带和上一期的涨跌对比，还有每天的柱状图和“本周之最”。
+          - 修复 Codex 子 agent 会话被误认成父会话、导致漏算一次对话的问题（两个平台都已修复）。
+
+          所有数据只在本机读取，不上传任何内容。
+          EOF
+          gh release create "$GITHUB_REF_NAME" assets/*.dmg assets/*.exe \
+            --repo "$GITHUB_REPOSITORY" --title "AI 年度报告 $GITHUB_REF_NAME" --notes-file notes.md
