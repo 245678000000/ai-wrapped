@@ -75,16 +75,17 @@ final class AppModel: ObservableObject {
         scan = result
         self.years = years
         let current = Calendar.current.component(.year, from: Date())
-        select(year: years.contains(current) ? current : years.last)
+        select(years.contains(current) ? .year(current) : years.last.map(Period.year) ?? .all)
     }
 
-    func select(year: Int?) {
+    func select(_ period: Period) {
         guard let scan else { return }
-        let r = Report.build(scan, year: year)
+        let r = Report.build(scan, period: period)
         withAnimation(.easeInOut(duration: 0.5)) {
             report = r
             slideIndex = 0
-            phase = r.isEmpty ? .empty : .ready
+            // A quiet week still gets its (empty) summary; only "no records at all" is empty.
+            phase = scan.isEmpty ? .empty : .ready
         }
     }
 }

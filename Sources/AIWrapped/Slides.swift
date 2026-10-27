@@ -4,18 +4,20 @@ import SwiftUI
 struct StoryContext {
     var report: Report
     var years: [Int] = []
-    var selectYear: (Int?) -> Void = { _ in }
+    var select: (Period) -> Void = { _ in }
     var next: () -> Void = {}
     var restart: () -> Void = {}
     var rescan: () -> Void = {}
 }
 
 enum Slide: Hashable {
-    case cover, first, tokens, conversations, agents, models, tools, rhythm, calendar, projects, persona, summary
+    case cover, week, first, tokens, conversations, agents, models, tools, rhythm, calendar, projects, persona, summary
 
-    var palette: Palette {
+    /// Weekly and monthly reports wear their own night-sky colors on the cover.
+    func palette(for r: Report) -> Palette {
         switch self {
-        case .cover: return .cover
+        case .cover: return r.period.isShort ? .weeklyCover : .cover
+        case .week: return .weekly
         case .first: return .first
         case .tokens: return .tokens
         case .conversations: return .talk
@@ -31,6 +33,19 @@ enum Slide: Hashable {
     }
 
     static func list(for r: Report) -> [Slide] {
+        // A week or month is a lighter read: the summary up front, no year-scale pages.
+        if r.period.isShort {
+            guard !r.isEmpty else { return [.cover, .week] }
+            var s: [Slide] = [.cover, .week, .tokens]
+            if r.promptCount > 0 { s.append(.conversations) }
+            if !r.agents.isEmpty { s.append(.agents) }
+            if !r.models.isEmpty { s.append(.models) }
+            if r.toolCallCount > 0 { s.append(.tools) }
+            if r.promptCount > 0 { s.append(.rhythm) }
+            if !r.projects.isEmpty { s.append(.projects) }
+            s.append(.summary)
+            return s
+        }
         var s: [Slide] = [.cover]
         if r.firstPrompt != nil { s.append(.first) }
         s.append(.tokens)
@@ -54,6 +69,7 @@ struct SlideView: View {
         Group {
             switch slide {
             case .cover: CoverSlide(ctx: ctx)
+            case .week: WeekSlide(r: ctx.report)
             case .first: FirstSlide(r: ctx.report)
             case .tokens: TokensSlide(r: ctx.report)
             case .conversations: ConversationsSlide(r: ctx.report)
@@ -80,83 +96,130 @@ struct SlideView: View {
 struct CoverSlide: View {
     let ctx: StoryContext
     var r: Report { ctx.report }
+    var p: Period { r.period }
     @Environment(\.isSnapshot) private var snapshot
 
     var body: some View {
+        let palette = Slide.cover.palette(for: r)
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Eyebrow(text: "AI WRAPPED", accent: Palette.cover.accent).reveal(0)
+                Eyebrow(text: p.isShort ? "AI WRAPPED · \(p.isWeek ? "WEEKLY" : "MONTHLY")" : "AI WRAPPED", accent: palette.accent)
+                    .reveal(0)
                 Spacer()
-                if snapshot {
-                    // Menus are AppKit-backed and can't be rendered offscreen.
-                    Label(r.year.map { "\(String($0)) 年" } ?? "全部时间", systemImage: "calendar")
-                        .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(.white.opacity(0.12)))
-                } else if ctx.years.count > 0 {
-                    Menu {
-                        ForEach(ctx.years.reversed(), id: \.self) { y in
-                            Button("\(String(y)) 年") { ctx.selectYear(y) }
-                        }
-                        Divider()
-                        Button("全部时间") { ctx.selectYear(nil) }
-                        Divider()
-                        Button("重新扫描本地记录") { ctx.rescan() }
-                    } label: {
-                        Label(r.year.map { "\(String($0)) 年" } ?? "全部时间", systemImage: "calendar")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(.white.opacity(0.12)))
-                    .reveal(0.1)
-                }
+                periodMenu.reveal(0.1)
             }
             Spacer(minLength: 20)
             Text("你的").font(.heading(40)).opacity(0.85).reveal(0.15)
-            Text(r.year.map(String.init) ?? "ALL TIME")
-                .font(.display(r.year == nil ? 150 : 210))
-                .foregroundStyle(LinearGradient(colors: [.white, Color(hex: 0xFFD3A8), Color(hex: 0xFF8FB8)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                .shadow(color: Color(hex: 0xE04F8B).opacity(0.5), radius: 40)
-                .padding(.vertical, -18)
+            Text(p.isShort ? p.rangeText() : (r.year.map(String.init) ?? "ALL TIME"))
+                .font(.display(p.isWeek ? 136 : (r.year == nil && !p.isShort ? 150 : 200)))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .foregroundStyle(LinearGradient(colors: heroColors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                .shadow(color: heroGlow.opacity(0.5), radius: 40)
+                .padding(.vertical, p.isWeek ? -8 : -18)
                 .reveal(0.25)
-            Text("AI 年度报告").font(.system(size: 60, weight: .heavy)).reveal(0.35)
+            Text(p.isShort ? "\(p.label) · \(p.reportName)" : p.reportName)
+                .font(.system(size: 60, weight: .heavy))
+                .padding(.top, p.isWeek ? 8 : 0)
+                .reveal(0.35)
             Text(subtitle)
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
                 .padding(.top, 14)
                 .reveal(0.5)
             Spacer(minLength: 20)
-            HStack(spacing: 18) {
+            HStack(spacing: 14) {
                 Button(action: ctx.next) {
                     HStack(spacing: 10) {
-                        Text("开始回顾")
+                        Text(p.isShort ? "看看\(p.label)" : "开始回顾")
                         Image(systemName: "arrow.right")
                     }
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x2A0B52))
+                    .foregroundStyle(p.isShort ? Color(hex: 0x10204A) : Color(hex: 0x2A0B52))
                     .padding(.horizontal, 28)
                     .padding(.vertical, 15)
                     .background(Capsule().fill(.white))
                     .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
                 }
                 .buttonStyle(.plain)
+                switchButton
                 Text("← → 或空格翻页")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
+                    .padding(.leading, 4)
             }
             .reveal(0.65)
+        }
+    }
+
+    private var heroColors: [Color] {
+        p.isShort ? [.white, Color(hex: 0xBFF4FF), Color(hex: 0xC4B5FF)] : [.white, Color(hex: 0xFFD3A8), Color(hex: 0xFF8FB8)]
+    }
+    private var heroGlow: Color { p.isShort ? Color(hex: 0x2FB5C9) : Color(hex: 0xE04F8B) }
+    private var defaultYear: Period { ctx.years.last.map(Period.year) ?? .all }
+
+    /// Jumps between the year report and this week's summary.
+    private var switchButton: some View {
+        Button { ctx.select(p.isShort ? defaultYear : .thisWeek) } label: {
+            Label(p.isShort ? "回到年度报告" : "本周小结", systemImage: p.isShort ? "sparkles" : "calendar.badge.clock")
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(Capsule().fill(.white.opacity(0.12)))
+                .overlay(Capsule().strokeBorder(.white.opacity(0.22)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var menuLabel: some View {
+        Label(p.label, systemImage: "calendar")
+            .font(.system(size: 14, weight: .semibold))
+    }
+
+    @ViewBuilder private var periodMenu: some View {
+        if snapshot {
+            // Menus are AppKit-backed and can't be rendered offscreen.
+            menuLabel
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(.white.opacity(0.12)))
+        } else {
+            Menu {
+                Button("本周") { ctx.select(.thisWeek) }
+                Button("上周") { ctx.select(.lastWeek) }
+                Button("本月") { ctx.select(.thisMonth) }
+                Divider()
+                ForEach(ctx.years.reversed(), id: \.self) { y in
+                    Button("\(String(y)) 年") { ctx.select(.year(y)) }
+                }
+                Button("全部时间") { ctx.select(.all) }
+                Divider()
+                Button("重新扫描本地记录") { ctx.rescan() }
+            } label: {
+                menuLabel
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(.white.opacity(0.12)))
         }
     }
 
     var subtitle: String {
         let names = r.agents.prefix(3).map(\.agent.displayName).joined(separator: "、")
         let lead = r.agents.count > 3 ? "\(names) 等 \(r.agents.count) 个 agent，" : (names.isEmpty ? "" : names + "，")
-        return "\(lead)\(Fmt.grouped(r.sessionCount)) 次对话，都在这里了。数据只在本机读取。"
+        guard p.isShort else { return "\(lead)\(Fmt.grouped(r.sessionCount)) 次对话，都在这里了。数据只在本机读取。" }
+        if r.isEmpty { return "\(p.phrase)还没有和 AI 聊过。去开个头吧。" }
+        let elapsed = p.elapsedDays() ?? 0
+        let total = r.daily.count
+        let note: String
+        switch p {
+        case .thisWeek where elapsed < total: note = "本周才过了 \(elapsed) 天，周日晚上再来看完整版。"
+        case .thisMonth where elapsed < total: note = "这个月才过了 \(elapsed) 天。"
+        default: note = "数据只在本机读取。"
+        }
+        return "\(lead)\(Fmt.grouped(r.sessionCount)) 次对话。\(note)"
     }
 }
 
@@ -220,7 +283,7 @@ struct TokensSlide: View {
         VStack(alignment: .leading, spacing: 0) {
             Eyebrow(text: "TOKENS", accent: Palette.tokens.accent).reveal(0)
             Spacer(minLength: 12)
-            Text(r.year == nil ? "到目前为止，你和 AI 一共消耗了" : "这一年，你和 AI 一共消耗了")
+            Text("\(r.period.phrase)，你和 AI 一共消耗了")
                 .font(.heading(30)).opacity(0.9).reveal(0.1)
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 CountUp(target: total, delay: 0.3, duration: 2.0) { Fmt.scaled($0, like: total) }
@@ -731,7 +794,7 @@ struct CalendarSlide: View {
                     }
                     .frame(width: 340)
                 }
-                MonthlyBars(months: r.monthly, accent: Palette.calendar.accent).frame(height: 112)
+                MonthlyBars(months: r.series, accent: Palette.calendar.accent).frame(height: 112)
             }
             .reveal(0.5)
         }
@@ -940,10 +1003,11 @@ struct SummarySlide: View {
                 .reveal(0.1)
             VStack(alignment: .leading, spacing: 18) {
                 Eyebrow(text: "就是这样", accent: .white)
-                Text("这是你的\n\(ctx.report.year.map { "\(String($0)) 年" } ?? "全部") AI 年度报告")
+                Text("这是你的\n\(summaryName)")
                     .font(.heading(40))
                     .lineSpacing(4)
-                Text("保存成图片发给朋友，或者明年再来对比。")
+                Text(ctx.report.period.isWeek ? "保存成图片，下周再来看看有没有进步。"
+                     : ctx.report.period.isShort ? "保存成图片，下个月再来对比。" : "保存成图片发给朋友，或者明年再来对比。")
                     .font(.system(size: 17)).opacity(0.7)
                 VStack(alignment: .leading, spacing: 12) {
                     action("保存为图片…", "square.and.arrow.down", primary: true) {
@@ -966,6 +1030,16 @@ struct SummarySlide: View {
             .reveal(0.3)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var summaryName: String {
+        let p = ctx.report.period
+        switch p {
+        case .year(let y): return "\(String(y)) 年 AI 年度报告"
+        case .all: return "全部 AI 年度报告"
+        case .thisWeek, .lastWeek: return "\(p.label) AI 周报"
+        case .thisMonth: return "\(p.badge()) AI 月报"
+        }
     }
 
     func flash(_ s: String) {

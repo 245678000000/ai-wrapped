@@ -80,8 +80,15 @@ enum LocalTime {
 }
 
 struct Report {
-    let year: Int?
-    var title: String { year.map(String.init) ?? "全部" }
+    let period: Period
+    var year: Int? { period.year }
+    var title: String {
+        switch period {
+        case .year(let y): return String(y)
+        case .all: return "全部"
+        default: return period.label
+        }
+    }
 
     var tokens = TokenCounts()
     var agents: [AgentStat] = []
@@ -104,7 +111,13 @@ struct Report {
     var longestStreak = 0
     var streakStart: DayKey = 0
     var busiestDay: (day: DayKey, stat: DayStat)?
-    var monthly: [(label: String, tokens: Int64)] = []
+    /// Bars for the period: months of a year, days of a week or month.
+    var series: [(label: String, tokens: Int64)] = []
+    /// Every day of a week or month, including empty and future ones.
+    var daily: [(day: DayKey, stat: DayStat)] = []
+    /// The previous week/month up to the same point, for "比上周 ↑ 32%".
+    var previous: PeriodTotals?
+    var comparisonLabel = ""
     var hourly = [Int](repeating: 0, count: 24)
     var weekday = [Int](repeating: 0, count: 7) // Monday first
     var projects: [ProjectStat] = []
@@ -127,11 +140,12 @@ struct Report {
     }
 
     // swiftlint:disable:next function_body_length
-    static func build(_ scan: ScanResult, year: Int?) -> Report {
-        var r = Report(year: year)
+    static func build(_ scan: ScanResult, period: Period) -> Report {
+        var r = Report(period: period)
+        let range = period.range()
         func inRange(_ t: Double) -> DayKey? {
             let d = LocalTime.day(t)
-            if let year, LocalTime.year(d) != year { return nil }
+            if let range, !range.contains(d) { return nil }
             return d
         }
 
@@ -264,20 +278,29 @@ struct Report {
         r.busiestDay = r.days.max { ($0.value.tokens, $0.value.prompts) < ($1.value.tokens, $1.value.prompts) }
             .map { ($0.key, $0.value) }
 
-        if let year {
+        switch period {
+        case .year:
             var months = [Int64](repeating: 0, count: 12)
             for (d, s) in r.days { months[(LocalTime.components(d).month ?? 1) - 1] += s.tokens }
-            r.monthly = months.enumerated().map { ("\($0.offset + 1)月", $0.element) }
-            _ = year
-        } else {
+            r.series = months.enumerated().map { ("\($0.offset + 1)月", $0.element) }
+        case .all:
             var months: [Int: Int64] = [:]
             for (d, s) in r.days {
                 let c = LocalTime.components(d)
                 months[(c.year ?? 0) * 12 + (c.month ?? 1) - 1, default: 0] += s.tokens
             }
             if let lo = months.keys.min(), let hi = months.keys.max() {
-                r.monthly = (lo...hi).map { m in ("\(m / 12 % 100)/\(m % 12 + 1)", months[m] ?? 0) }
+                r.series = (lo...hi).map { m in ("\(m / 12 % 100)/\(m % 12 + 1)", months[m] ?? 0) }
             }
+        case .thisWeek, .lastWeek, .thisMonth:
+            r.daily = range!.map { ($0, r.days[$0] ?? DayStat()) }
+            r.series = r.daily.map { d in
+                (period.isWeek ? "周" + Fmt.weekdayName(LocalTime.weekdayIndex(d.day)) : "\(LocalTime.components(d.day).day ?? 0)", d.stat.tokens)
+            }
+        }
+        if let cmp = period.comparison() {
+            r.previous = PeriodTotals.of(scan, in: cmp.range)
+            r.comparisonLabel = cmp.label
         }
 
         r.persona = makePersona(r)

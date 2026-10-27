@@ -9,16 +9,17 @@ struct ShareCard: View {
 
     var body: some View {
         ZStack {
-            MeshBackground(palette: .persona, animated: false)
+            MeshBackground(palette: short ? .weeklyCover : .persona, animated: false)
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text("AI WRAPPED").font(.system(size: 13, weight: .bold)).tracking(4)
                     Spacer()
-                    Text(r.year.map(String.init) ?? "ALL TIME").font(.display(18))
+                    Text(short ? r.period.rangeText() : r.period.badge()).font(.display(18))
                 }
                 .opacity(0.85)
 
-                Text("年度 AI 人格").font(.system(size: 14, weight: .semibold)).opacity(0.7).padding(.top, 34)
+                Text(short ? "\(r.period.label) AI 人格 · \(r.period.badge())" : "年度 AI 人格")
+                    .font(.system(size: 14, weight: .semibold)).opacity(0.7).padding(.top, 34)
                 HStack(spacing: 14) {
                     Image(systemName: r.persona.symbol).font(.system(size: 40, weight: .semibold))
                     Text(r.persona.title).font(.display(56))
@@ -35,12 +36,12 @@ struct ShareCard: View {
 
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 18) {
                     GridRow {
-                        cell("Tokens", Fmt.big(r.tokens.total))
-                        cell("对话", Fmt.grouped(r.sessionCount) + " 次")
+                        cell("Tokens", Fmt.big(r.tokens.total), r.tokens.total, r.previous?.tokens)
+                        cell("对话", Fmt.grouped(r.sessionCount) + " 次", r.sessionCount, r.previous?.sessions)
                     }
                     GridRow {
-                        cell("消息", Fmt.grouped(r.promptCount) + " 条")
-                        cell("活跃", "\(r.activeDays) 天")
+                        cell("消息", Fmt.grouped(r.promptCount) + " 条", r.promptCount, r.previous?.prompts)
+                        cell("活跃", "\(r.activeDays) 天", r.activeDays, r.previous?.activeDays)
                     }
                     GridRow {
                         cell("头号搭档", r.topAgent?.agent.displayName ?? "—")
@@ -54,9 +55,11 @@ struct ShareCard: View {
                 .padding(.top, 26)
 
                 Spacer(minLength: 16)
-                MonthlyBars(months: r.monthly, accent: Color(hex: 0x9EE6FF)).frame(height: 70)
+                MonthlyBars(months: r.series, accent: Color(hex: short ? 0x9EF0FF : 0x9EE6FF)).frame(height: 70)
                 HStack {
-                    Text("最常在 \(r.peakHour) 点出没 · 最长连续 \(r.longestStreak) 天 · 敲下 \(Fmt.big(r.charCount)) 字")
+                    Text(short
+                         ? "箭头对比\(r.comparisonLabel) · 最常在 \(r.peakHour) 点出没 · 敲下 \(Fmt.big(r.charCount)) 字"
+                         : "最常在 \(r.peakHour) 点出没 · 最长连续 \(r.longestStreak) 天 · 敲下 \(Fmt.big(r.charCount)) 字")
                     Spacer()
                     Text("本机生成")
                 }
@@ -72,9 +75,19 @@ struct ShareCard: View {
         .environment(\.isSnapshot, true)
     }
 
-    func cell(_ k: String, _ v: String) -> some View {
+    private var short: Bool { r.period.isShort }
+
+    func cell<N: BinaryInteger>(_ k: String, _ v: String, _ current: N, _ previous: N?) -> some View {
+        cell(k, v, delta: short ? DeltaChip(current: Double(current), previous: previous.map(Double.init)) : nil)
+    }
+
+    func cell(_ k: String, _ v: String, delta: DeltaChip? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(k).font(.system(size: 13, weight: .semibold)).opacity(0.65)
+            HStack {
+                Text(k).font(.system(size: 13, weight: .semibold)).opacity(0.65)
+                Spacer(minLength: 4)
+                if let delta { delta.scaleEffect(0.82, anchor: .trailing).padding(.vertical, -4) }
+            }
             Text(v).font(.system(size: 26, weight: .heavy, design: .rounded)).lineLimit(1).minimumScaleFactor(0.6)
         }
         .padding(16)
@@ -104,7 +117,8 @@ enum CardExporter {
     static func save(_ r: Report) -> Bool {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "AI年度报告-\(r.year.map(String.init) ?? "全部").png"
+        let kind = r.period.isWeek ? "AI周报" : r.period.isShort ? "AI月报" : "AI年度报告"
+        panel.nameFieldStringValue = "\(kind)-\(r.period.fileTag).png"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url, let data = png(r) else { return false }
         return (try? data.write(to: url)) != nil

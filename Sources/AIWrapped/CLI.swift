@@ -4,12 +4,26 @@ import SwiftUI
 /// Headless entry points: `--dump` prints the numbers, `--snapshot DIR` renders every
 /// slide to PNG, `--icon PATH` renders the 1024px app icon.
 enum CLI {
+    /// `--period week|lastweek|month`, `--all`, or `--year 2026` (default: the latest year).
+    static func requestedPeriod(year: Int?, years: [Int]) -> Period {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--period"), i + 1 < args.count {
+            switch args[i + 1] {
+            case "week": return .thisWeek
+            case "lastweek": return .lastWeek
+            case "month": return .thisMonth
+            default: break
+            }
+        }
+        if args.contains("--all") { return .all }
+        return (year ?? years.last).map(Period.year) ?? .all
+    }
+
     static func scanAndBuild(year: Int?) -> (ScanResult, Report) {
         let began = Date()
         let scan = LocalScanner.scanAll { _, _ in }
         let years = Report.availableYears(scan)
-        let y = CommandLine.arguments.contains("--all") ? nil : (year ?? years.last)
-        let report = Report.build(scan, year: y)
+        let report = Report.build(scan, period: requestedPeriod(year: year, years: years))
         FileHandle.standardError.write("scanned in \(String(format: "%.2f", Date().timeIntervalSince(began)))s, years \(years)\n".data(using: .utf8)!)
         return (scan, report)
     }
@@ -17,7 +31,13 @@ enum CLI {
     static func dump(year: Int?) {
         let (scan, r) = scanAndBuild(year: year)
         print("records: usage=\(scan.usage.count) prompts=\(scan.prompts.count) tools=\(scan.tools.count) sessions=\(scan.sessions.count)")
-        print("== \(r.title)")
+        print("== \(r.title) \(r.period.rangeText())")
+        if let prev = r.previous {
+            print("compare \(r.comparisonLabel): tokens=\(prev.tokens) sessions=\(prev.sessions) prompts=\(prev.prompts) activeDays=\(prev.activeDays)")
+        }
+        if !r.daily.isEmpty {
+            print("daily:", r.daily.map { "\(Fmt.shortDay($0.day))=\(Fmt.big($0.stat.tokens))/\($0.stat.prompts)" }.joined(separator: " "))
+        }
         print("tokens total=\(r.tokens.total) in=\(r.tokens.input) out=\(r.tokens.output) cacheR=\(r.tokens.cacheRead) cacheW=\(r.tokens.cacheWrite)")
         print("sessions=\(r.sessionCount) prompts=\(r.promptCount) chars=\(r.charCount) activeDays=\(r.activeDays) streak=\(r.longestStreak)")
         print("agents:"); r.agents.forEach { print("  \($0.agent.displayName) tokens=\($0.tokens) sessions=\($0.sessions) prompts=\($0.prompts)") }
@@ -30,7 +50,7 @@ enum CLI {
         print("projects:", r.projects.prefix(8).map { "\($0.name)(\($0.prompts)/\($0.sessions))" }.joined(separator: ", "))
         print("hourly:", r.hourly, "peak", r.peakHour)
         print("weekday:", r.weekday)
-        print("monthly:", r.monthly.map { "\($0.label)=\(Fmt.big($0.tokens))" }.joined(separator: " "))
+        print("series:", r.series.map { "\($0.label)=\(Fmt.big($0.tokens))" }.joined(separator: " "))
         if let p = r.firstPrompt { print("first:", Fmt.day(LocalTime.day(p.time), withYear: true), Fmt.clock(p.time), p.agent.displayName, p.preview.prefix(60)) }
         if let p = r.lateNight { print("late:", Fmt.clock(p.time), p.preview.prefix(60), "count", r.lateNightCount) }
         if let b = r.busiestDay { print("busiest:", Fmt.day(b.day, withYear: true), b.stat.tokens, b.stat.prompts) }

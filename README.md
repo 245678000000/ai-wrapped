@@ -15,6 +15,8 @@
 
 一共 12 页：封面 · 第一句话 · Token 用量 · 对话 · Agent 排行 · 模型 · 工具与子 agent · 作息时钟 · 活跃日历 · 项目 · 年度 AI 人格 · 分享卡片（可存成图片或复制）。封面右上角可以切换年份或看全部时间。
 
+**周报 / 月报（macOS）：** 封面右上角选“本周 / 上周 / 本月”，或点封面上的“本周小结”。第一页是本期小结：Tokens、对话、消息、活跃天数各带一个和上一期的涨跌对比（本周没过完时，对比上周的同一段，比如周一到周二），下面是每天的柱状图和“本周之最”，后面接 token、agent、模型、工具、作息、项目和分享卡片。
+
 ## 数据来源
 
 只读、只在本机。有 token 的统计 token；只存了积分或只存对话的，统计对话和消息。
@@ -60,6 +62,7 @@ Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把�
 ```bash
 .build/release/AIWrapped --dump --year 2026      # 打印统计数字
 .build/release/AIWrapped --dump --all            # 全部时间
+.build/release/AIWrapped --dump --period week    # 本周（也可以 lastweek / month）
 .build/release/AIWrapped --snapshot out/ --year 2026   # 每一页导出 PNG
 ```
 

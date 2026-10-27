@@ -9,7 +9,7 @@ struct StoryPage: View {
 
     var body: some View {
         ZStack {
-            MeshBackground(palette: slides[index].palette)
+            MeshBackground(palette: slides[index].palette(for: ctx.report))
                 .id(index)
                 .transition(.opacity)
             SlideView(slide: slides[index], ctx: ctx)
@@ -38,7 +38,7 @@ struct StoryView: View {
         let ctx = StoryContext(
             report: report,
             years: model.years,
-            selectYear: { model.select(year: $0) },
+            select: { model.select($0) },
             next: { go(+1) },
             restart: { go(to: 0) },
             rescan: { model.start() }
