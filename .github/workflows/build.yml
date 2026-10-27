@@ -155,33 +155,14 @@ jobs:
           path: assets
           merge-multiple: true
 
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la assets
-          cat > notes.md <<'EOF'
-          ## 下载
-
-          | 系统 | 文件 | 说明 |
-          |---|---|---|
-          | macOS 15 及以上（Apple 芯片和 Intel） | `AI-Wrapped-*-mac.dmg` | 打开后把「AI 年度报告」拖进「应用程序」 |
-          | Windows 10/11 | `AI-Wrapped-*-setup.exe` | 安装包（推荐） |
-          | Windows 10/11 | `AI-Wrapped-*-portable.exe` | 免安装，双击运行 |
-
-          ## 第一次打开
-
-          应用没有做代码签名和公证：
-
-          - **macOS**：如果提示“无法验证开发者”或“已损坏”，到「系统设置 → 隐私与安全性」底部点「仍要打开」；或在终端运行 `xattr -dr com.apple.quarantine "/Applications/AI 年度报告.app"`。
-          - **Windows**：SmartScreen 提示时点「更多信息 → 仍要运行」。
-
-          ## 更新内容
-
-          - macOS 新增**周报和月报**：封面右上角选“本周 / 上周 / 本月”，或点“本周小结”。四个核心数字都带和上一期的涨跌对比，还有每天的柱状图和“本周之最”。
-          - 修复 Codex 子 agent 会话被误认成父会话、导致漏算一次对话的问题（两个平台都已修复）。
-
-          所有数据只在本机读取，不上传任何内容。
-          EOF
           gh release create "$GITHUB_REF_NAME" assets/*.dmg assets/*.exe \
-            --repo "$GITHUB_REPOSITORY" --title "AI 年度报告 $GITHUB_REF_NAME" --notes-file notes.md
+            --repo "$GITHUB_REPOSITORY" --title "AI 年度报告 $GITHUB_REF_NAME" --notes-file .github/release-notes.md

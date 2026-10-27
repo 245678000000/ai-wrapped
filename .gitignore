@@ -8,5 +8,5 @@ windows/node_modules/
 windows/src-tauri/target/
 windows/src-tauri/gen/
 !windows/src-tauri/icons/*.png
-windows/ui/sample-report.json
+windows/ui/sample-*.json
 .claude/

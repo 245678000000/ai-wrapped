@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod model;
+mod period;
 mod report;
 mod scan;
 mod util;
@@ -38,10 +39,11 @@ async fn start_scan(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
     Ok(years)
 }
 
+/// `period` is `{kind: "year", year: 2026}`, `{kind: "all"}`, `{kind: "thisWeek"}`, `{kind: "lastWeek"}` or `{kind: "thisMonth"}`.
 #[tauri::command]
-fn get_report(year: Option<i32>, state: State<'_, AppState>) -> Result<report::Report, String> {
+fn get_report(period: period::Period, state: State<'_, AppState>) -> Result<report::Report, String> {
     let scan = state.scan.lock().unwrap().clone().ok_or("还没有扫描")?;
-    Ok(report::build(&scan, year))
+    Ok(report::build(&scan, period))
 }
 
 /// Saves the share card (a PNG data URL rendered by the page) where the user picks.
@@ -60,7 +62,8 @@ async fn save_png(app: tauri::AppHandle, data_url: String, file_name: String) ->
 }
 
 /// Headless modes: `--dump` prints a summary, `--dump-json PATH` writes the report (used by CI).
-/// `--year 2026` or `--all` pick the period; the default is the latest year with data.
+/// `--period week|lastweek|month`, `--year 2026` or `--all` pick the period; the default is the
+/// latest year with data.
 fn run_cli(args: &[String]) -> bool {
     let value_after = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
     let json_path = value_after("--dump-json");
@@ -70,14 +73,27 @@ fn run_cli(args: &[String]) -> bool {
     let began = std::time::Instant::now();
     let scan = scan::scan_all(|_, _| {});
     let years = report::available_years(&scan);
-    let year = if args.iter().any(|a| a == "--all") { None } else { value_after("--year").and_then(|y| y.parse().ok()).or(years.last().copied()) };
-    let r = report::build(&scan, year);
+    use period::Period;
+    let period = match value_after("--period").as_deref() {
+        Some("week") => Period::ThisWeek,
+        Some("lastweek") => Period::LastWeek,
+        Some("month") => Period::ThisMonth,
+        _ if args.iter().any(|a| a == "--all") => Period::All,
+        _ => value_after("--year").and_then(|y| y.parse().ok()).or(years.last().copied()).map(|year| Period::Year { year }).unwrap_or(Period::All),
+    };
+    let r = report::build(&scan, period);
     eprintln!("scanned in {:.2}s, years {:?}", began.elapsed().as_secs_f64(), years);
     match json_path {
         Some(path) => std::fs::write(&path, serde_json::to_string_pretty(&r).unwrap()).expect("write report"),
         None => {
             println!("records: usage={} prompts={} tools={} sessions={}", scan.usage.len(), scan.prompts.len(), scan.tools.len(), scan.sessions.len());
-            println!("== {}", year.map(|y| y.to_string()).unwrap_or("全部".into()));
+            println!("== {} {}", r.period.label, r.period.range_text);
+            if let Some(p) = &r.previous {
+                println!("compare {}: tokens={} sessions={} prompts={} activeDays={}", r.period.comparison_label, p.tokens, p.sessions, p.prompts, p.active_days);
+            }
+            if !r.daily.is_empty() {
+                println!("daily: {}", r.daily.iter().map(|d| format!("{}={}/{}", &d.date[5..], d.tokens, d.prompts)).collect::<Vec<_>>().join(" "));
+            }
             let t = &r.tokens;
             println!("tokens total={} in={} out={} cacheR={} cacheW={}", t.total, t.input, t.output, t.cache_read, t.cache_write);
             println!("sessions={} prompts={} chars={} activeDays={} streak={}", r.session_count, r.prompt_count, r.char_count, r.active_days, r.longest_streak);

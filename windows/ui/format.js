@@ -51,4 +51,18 @@ const PALETTES = {
   projects: [["#1F0507", "#5C0F14", "#2E070A", "#9E1B22", "#F2552F", "#701219", "#1A0405", "#E8952A", "#4A0C10"], "#FFC78A"],
   persona: [["#0B0420", "#3A0E6E", "#081230", "#7B2FF7", "#E0237C", "#4361EE", "#10062A", "#3BB4E0", "#2A0E55"], "#FFFFFF"],
   summary: [["#07040F", "#1C0B36", "#0A0A1E", "#2E1460", "#5A1F6E", "#1E2A66", "#05030C", "#183A5C", "#150A2C"], "#FFFFFF"],
+  // Weekly/monthly mode: a night-sky indigo with teal light, kin to the yearly purples.
+  weeklyCover: [["#0A0820", "#1A1550", "#0B1030", "#3B2C9E", "#2FB5C9", "#22357A", "#070618", "#8B5CF6", "#161340"], "#9EF0FF"],
+  weekly: [["#060F1F", "#0E2A4A", "#0A1830", "#1C4E80", "#2E8FB8", "#183A66", "#050C18", "#5B4FD6", "#0F2240"], "#8FE3FF"],
 };
+
+/** "↗ 32%" / "↘ 12%" / "持平" / "新增" against the previous period. */
+function delta(current, previous) {
+  if (previous == null) return { text: "—", tone: "flat", arrow: "–" };
+  if (previous === 0) return current > 0 ? { text: "新增", tone: "up", arrow: "✦" } : { text: "持平", tone: "flat", arrow: "=" };
+  const change = (current - previous) / previous;
+  if (Math.abs(change) < 0.01) return { text: "持平", tone: "flat", arrow: "=" };
+  const text = change >= 2 ? `${(current / previous).toFixed(1)} 倍` : `${Math.round(Math.abs(change) * 100)}%`;
+  return change > 0 ? { text, tone: "up", arrow: "↗" } : { text, tone: "down", arrow: "↘" };
+}
+const DELTA_COLORS = { up: "#7CF5C4", down: "#FF9DB6", flat: "rgba(255,255,255,.7)" };

@@ -2,15 +2,21 @@
 const TAURI = window.__TAURI__;
 const $ = (sel) => document.querySelector(sel);
 
-const state = { report: null, years: [], slides: [], index: 0, cardURL: "", cardCanvas: null, scanning: false };
+const state = { report: null, period: null, years: [], slides: [], index: 0, cardURL: "", cardCanvas: null, scanning: false };
+
+const yearPeriod = (year) => (year ? { kind: "year", year } : { kind: "all" });
+const defaultPeriod = () => {
+  const current = new Date().getFullYear();
+  return yearPeriod(state.years.includes(current) ? current : state.years.at(-1));
+};
 
 // ---------- backend ----------
 async function scan(onProgress) {
   if (!TAURI) {
-    // Opened in a plain browser (UI development): use a report exported with --dump-json.
+    // Opened in a plain browser (UI development): use reports exported with --dump-json.
     onProgress(0.6, "示例数据");
     const r = await (await fetch("sample-report.json")).json();
-    return { years: r.years, sample: r };
+    return { years: r.years };
   }
   const unlisten = await TAURI.event.listen("scan-progress", (e) => onProgress(e.payload.fraction, e.payload.label));
   try {
@@ -20,9 +26,10 @@ async function scan(onProgress) {
   }
 }
 
-async function loadReport(year, sample) {
-  if (!TAURI) return sample ?? state.report;
-  return TAURI.core.invoke("get_report", { year });
+async function loadReport(period) {
+  if (TAURI) return TAURI.core.invoke("get_report", { period });
+  const res = await fetch(`sample-${period.kind}.json`);
+  return (res.ok ? res : await fetch("sample-report.json")).json();
 }
 
 // ---------- background ----------
@@ -77,7 +84,7 @@ function render(direction = 1) {
   const r = state.report;
   const name = state.slides[state.index];
   const def = SLIDES[name];
-  setBackground(def.palette);
+  setBackground(typeof def.palette === "function" ? def.palette(r) : def.palette);
 
   const stage = $("#stage");
   stage.querySelectorAll(".slide").forEach((old) => {
@@ -94,7 +101,7 @@ function render(direction = 1) {
 
   $("#segments").innerHTML = state.slides.map((_, i) => `<i class="${i < state.index ? "past" : i === state.index ? "now" : ""}"></i>`).join("");
   $("#bottombar").hidden = false;
-  $("#brand").textContent = `AI WRAPPED · ${r.year ?? "全部"}`;
+  $("#brand").textContent = `AI WRAPPED · ${r.year ?? r.period.label}`;
   $("#counter").textContent = `${state.index + 1} / ${state.slides.length}`;
   $("#prev").disabled = state.index === 0;
   $("#next").disabled = state.index === state.slides.length - 1;
@@ -110,14 +117,16 @@ function goTo(i, direction = 1) {
   render(direction);
 }
 
-async function showReport(year, sample) {
-  const r = await loadReport(year, sample);
+async function showReport(period) {
+  const r = await loadReport(period);
+  state.period = period;
   state.report = r;
   state.slides = slideList(r);
   state.index = 0;
   state.cardCanvas = drawCard(r);
   state.cardURL = state.cardCanvas.toDataURL("image/png");
-  if (r.tokens.total === 0 && r.promptCount === 0 && r.sessionCount === 0) return showEmpty();
+  // A quiet week still gets its (empty) summary; only "no records at all" is empty.
+  if (!r.period.isShort && r.tokens.total === 0 && r.promptCount === 0 && r.sessionCount === 0) return showEmpty();
   render();
 }
 
@@ -164,9 +173,7 @@ async function start() {
     state.years = result.years;
     const wait = 1400 - (performance.now() - began);
     if (wait > 0) await new Promise((res) => setTimeout(res, wait));
-    const current = new Date().getFullYear();
-    const year = result.sample ? result.sample.year : result.years.includes(current) ? current : result.years.at(-1) ?? null;
-    await showReport(year, result.sample);
+    await showReport(defaultPeriod());
   } catch (err) {
     console.error(err);
     showEmpty();
@@ -181,8 +188,9 @@ function toggleMenu(anchor) {
   if (document.querySelector(".menu")) return closeMenu();
   const menu = document.createElement("div");
   menu.className = "menu";
-  menu.innerHTML = [...state.years].reverse().map((y) => `<button data-year="${y}">${y} 年</button>`).join("")
-    + `<hr><button data-year="all">全部时间</button><hr><button data-act="rescan">重新扫描本地记录</button>`;
+  menu.innerHTML = `<button data-period="thisWeek">本周</button><button data-period="lastWeek">上周</button><button data-period="thisMonth">本月</button><hr>`
+    + [...state.years].reverse().map((y) => `<button data-year="${y}">${y} 年</button>`).join("")
+    + `<button data-year="all">全部时间</button><hr><button data-act="rescan">重新扫描本地记录</button>`;
   anchor.parentElement.appendChild(menu);
 }
 
@@ -196,7 +204,8 @@ function toast(text) {
 }
 
 async function saveCard() {
-  const name = `AI年度报告-${state.report.year ?? "全部"}.png`;
+  const p = state.report.period;
+  const name = `${p.isWeek ? "AI周报" : p.isShort ? "AI月报" : "AI年度报告"}-${p.fileTag}.png`;
   if (TAURI) {
     const ok = await TAURI.core.invoke("save_png", { dataUrl: state.cardURL, fileName: name });
     if (ok) toast("已保存");
@@ -225,11 +234,18 @@ document.addEventListener("click", async (e) => {
   if (yearBtn) {
     closeMenu();
     const y = yearBtn.dataset.year;
-    return showReport(y === "all" ? null : +y);
+    return showReport(yearPeriod(y === "all" ? null : +y));
+  }
+  const periodBtn = e.target.closest("[data-period]");
+  if (periodBtn) {
+    closeMenu();
+    return showReport({ kind: periodBtn.dataset.period });
   }
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "next") return go(1);
   if (act === "year-menu") return toggleMenu(e.target.closest("button"));
+  if (act === "to-week") return showReport({ kind: "thisWeek" });
+  if (act === "to-year") return showReport(defaultPeriod());
   if (act === "rescan") { closeMenu(); return start(); }
   if (act === "save") return saveCard();
   if (act === "copy") return copyCard();

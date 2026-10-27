@@ -33,8 +33,9 @@ function drawCard(r, scale = 2) {
   roundRect(ctx, 0, 0, CARD_W, CARD_H, 36);
   ctx.clip();
 
-  // Mesh-like background: the persona palette's nine colors as soft radial blobs.
-  const [mesh] = PALETTES.persona;
+  const short = r.period.isShort;
+  // Mesh-like background: nine colors as soft radial blobs (night sky for weeks and months).
+  const [mesh] = short ? PALETTES.weeklyCover : PALETTES.persona;
   ctx.fillStyle = mesh[6];
   ctx.fillRect(0, 0, CARD_W, CARD_H);
   mesh.forEach((color, i) => {
@@ -62,12 +63,12 @@ function drawCard(r, scale = 2) {
   if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
   ctx.font = `900 18px ${CARD_DISPLAY}`;
   ctx.textAlign = "right";
-  ctx.fillText(r.year ? String(r.year) : "ALL TIME", CARD_W - P, 62);
+  ctx.fillText(short ? r.period.rangeText : r.year ? String(r.year) : "ALL TIME", CARD_W - P, 62);
   ctx.textAlign = "left";
 
   ctx.fillStyle = "rgba(255,255,255,.7)";
   ctx.font = `600 14px ${CARD_FONT}`;
-  ctx.fillText("年度 AI 人格", P, 116);
+  ctx.fillText(short ? `${r.period.label} AI 人格 · ${r.period.badge}` : "年度 AI 人格", P, 116);
   ctx.fillStyle = "#fff";
   ctx.font = `40px ${CARD_FONT}`;
   ctx.fillText(r.persona.emoji, P, 176);
@@ -86,14 +87,17 @@ function drawCard(r, scale = 2) {
     x += w + 8;
   }
 
+  const prev = short ? r.previous : null;
   const cells = [
-    ["Tokens", Fmt.big(r.tokens.total)], ["对话", `${Fmt.grouped(r.sessionCount)} 次`],
-    ["消息", `${Fmt.grouped(r.promptCount)} 条`], ["活跃", `${r.activeDays} 天`],
+    ["Tokens", Fmt.big(r.tokens.total), prev && delta(r.tokens.total, prev.tokens)],
+    ["对话", `${Fmt.grouped(r.sessionCount)} 次`, prev && delta(r.sessionCount, prev.sessions)],
+    ["消息", `${Fmt.grouped(r.promptCount)} 条`, prev && delta(r.promptCount, prev.prompts)],
+    ["活跃", `${r.activeDays} 天`, prev && delta(r.activeDays, prev.activeDays)],
     ["头号搭档", r.agents[0]?.name ?? "—"], ["最爱模型", r.models[0]?.name ?? "—"],
     ["用过的 agent", `${r.agents.length} 个`], ["工具调用", `${Fmt.big(r.toolCallCount)} 次`],
   ];
   const cw = (CARD_W - P * 2 - 18) / 2, ch = 74;
-  cells.forEach(([k, v], i) => {
+  cells.forEach(([k, v, change], i) => {
     const cx = P + (i % 2) * (cw + 18), cy = 240 + Math.floor(i / 2) * (ch + 14);
     roundRect(ctx, cx, cy, cw, ch, 18);
     ctx.fillStyle = "rgba(255,255,255,.1)";
@@ -104,13 +108,28 @@ function drawCard(r, scale = 2) {
     ctx.fillStyle = "rgba(255,255,255,.65)";
     ctx.font = `600 13px ${CARD_FONT}`;
     ctx.fillText(k, cx + 16, cy + 26);
+    if (change) {
+      // Change chip in the cell's top-right corner, colored like the weekly page.
+      const label = `${change.arrow} ${change.text}`;
+      ctx.font = `700 11px ${CARD_FONT}`;
+      const w = ctx.measureText(label).width + 16;
+      const color = DELTA_COLORS[change.tone];
+      ctx.save();
+      roundRect(ctx, cx + cw - 12 - w, cy + 12, w, 20, 10);
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = color;
+      ctx.fillText(label, cx + cw - 12 - w + 8, cy + 26);
+    }
     ctx.fillStyle = "#fff";
     fitText(ctx, v, cw - 32, 26, 800, CARD_FONT);
     ctx.fillText(v, cx + 16, cy + 58);
   });
 
   // Monthly bars
-  const months = r.monthly;
+  const months = r.series;
   const max = Math.max(1, ...months.map((m) => m.tokens));
   const peak = months.findIndex((m) => m.tokens === max);
   const area = { x: P, y: 604, w: CARD_W - P * 2, h: 70 };
@@ -120,7 +139,7 @@ function drawCard(r, scale = 2) {
   months.forEach((m, i) => {
     const h = Math.max(3, (area.h * m.tokens) / max);
     const bx = area.x + i * (bw + gap);
-    ctx.fillStyle = i === peak ? "#9EE6FF" : "rgba(255,255,255,.3)";
+    ctx.fillStyle = i === peak ? (short ? "#9EF0FF" : "#9EE6FF") : "rgba(255,255,255,.3)";
     roundRect(ctx, bx, area.y + area.h - h, bw, h, Math.min(4, bw / 2));
     ctx.fill();
     if (i % every === 0) {
@@ -133,7 +152,9 @@ function drawCard(r, scale = 2) {
 
   ctx.fillStyle = "rgba(255,255,255,.6)";
   ctx.font = `500 12px ${CARD_FONT}`;
-  ctx.fillText(`最常在 ${r.peakHour} 点出没 · 最长连续 ${r.longestStreak} 天 · 敲下 ${Fmt.big(r.charCount)} 字`, P, 742);
+  ctx.fillText(short
+    ? `箭头对比${r.period.comparisonLabel} · 最常在 ${r.peakHour} 点出没 · 敲下 ${Fmt.big(r.charCount)} 字`
+    : `最常在 ${r.peakHour} 点出没 · 最长连续 ${r.longestStreak} 天 · 敲下 ${Fmt.big(r.charCount)} 字`, P, 742);
   ctx.textAlign = "right";
   ctx.fillText("本机生成", CARD_W - P, 742);
   ctx.textAlign = "left";

@@ -1,18 +1,19 @@
 //! Turns raw records into one year's (or all-time) report, the same rules as the macOS app.
 
 use crate::model::*;
+use crate::period::{totals, weekday_index, Period, PeriodInfo, PeriodTotals, WEEKDAYS};
 use crate::util::pretty_model_name;
 use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
-type DayKey = i64;
+pub type DayKey = i64;
 
 fn local_seconds(t: f64) -> f64 {
     let offset = Local.timestamp_opt(t as i64, 0).single().map(|d| d.offset().local_minus_utc()).unwrap_or(0);
     t + offset as f64
 }
-fn day_of(t: f64) -> DayKey {
+pub fn day_of(t: f64) -> DayKey {
     (local_seconds(t) / 86400.0).floor() as i64
 }
 fn hour_of(t: f64) -> usize {
@@ -21,16 +22,16 @@ fn hour_of(t: f64) -> usize {
 fn minute_of(t: f64) -> i64 {
     (local_seconds(t).rem_euclid(86400.0) / 60.0) as i64
 }
-fn date_of(d: DayKey) -> NaiveDate {
+pub fn date_of(d: DayKey) -> NaiveDate {
     DateTime::from_timestamp(d * 86400, 0).unwrap_or_default().date_naive()
 }
-fn key_of(date: NaiveDate) -> DayKey {
+pub fn key_of(date: NaiveDate) -> DayKey {
     date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp().div_euclid(86400)
 }
 fn date_str(d: DayKey) -> String {
     date_of(d).format("%Y-%m-%d").to_string()
 }
-fn today() -> DayKey {
+pub fn today() -> DayKey {
     day_of(chrono::Utc::now().timestamp() as f64)
 }
 
@@ -76,6 +77,19 @@ pub struct DayOut {
     pub tokens: i64,
     pub prompts: usize,
     pub sessions: usize,
+}
+
+/// One day of a week or month, including days still to come.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyOut {
+    pub date: String,
+    pub label: String,
+    pub tokens: i64,
+    pub prompts: usize,
+    pub sessions: usize,
+    pub is_today: bool,
+    pub is_future: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -125,6 +139,9 @@ pub struct Persona {
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     pub year: Option<i32>,
+    pub period: PeriodInfo,
+    /// The previous week/month up to the same point, for the change chips.
+    pub previous: Option<PeriodTotals>,
     pub years: Vec<i32>,
     pub today: String,
     pub tokens: TokensOut,
@@ -146,7 +163,9 @@ pub struct Report {
     pub streak_start: Option<String>,
     pub streak_end: Option<String>,
     pub busiest_day: Option<DayOut>,
-    pub monthly: Vec<MonthOut>,
+    /// Bars for the period: months of a year, days of a week or month.
+    pub series: Vec<MonthOut>,
+    pub daily: Vec<DailyOut>,
     pub hourly: Vec<usize>,
     pub weekday: Vec<usize>,
     pub peak_hour: usize,
@@ -179,11 +198,14 @@ fn prompt_out(p: &Prompt) -> PromptOut {
     PromptOut { date: date_str(d), clock: format!("{:02}:{:02}", m / 60, m % 60), agent: p.agent.name.to_string(), preview: p.preview.clone(), days_ago: today() - d }
 }
 
-pub fn build(scan: &ScanResult, year: Option<i32>) -> Report {
+pub fn build(scan: &ScanResult, period: Period) -> Report {
+    let year = period.year();
+    let now = today();
+    let range = period.range(now);
     let in_range = |t: f64| -> Option<DayKey> {
         let d = day_of(t);
-        match year {
-            Some(y) if date_of(d).year() != y => None,
+        match range {
+            Some((lo, hi)) if d < lo || d > hi => None,
             _ => Some(d),
         }
     };
@@ -357,15 +379,27 @@ pub fn build(scan: &ScanResult, year: Option<i32>) -> Report {
     }
     let busiest_day = days.iter().max_by_key(|(_, d)| (d.tokens, d.prompts)).map(|(k, d)| DayOut { date: date_str(*k), ..d.clone() });
 
-    let monthly: Vec<MonthOut> = match year {
-        Some(_) => {
+    let daily: Vec<DailyOut> = match range.filter(|_| period.is_short()) {
+        Some((lo, hi)) => (lo..=hi)
+            .map(|k| {
+                let d = days.get(&k).cloned().unwrap_or_default();
+                let label = if period.is_week() { format!("周{}", WEEKDAYS[weekday_index(k)]) } else { date_of(k).day().to_string() };
+                DailyOut { date: date_str(k), label, tokens: d.tokens, prompts: d.prompts, sessions: d.sessions, is_today: k == now, is_future: k > now }
+            })
+            .collect(),
+        None => vec![],
+    };
+
+    let series: Vec<MonthOut> = match period {
+        _ if period.is_short() => daily.iter().map(|d| MonthOut { label: d.label.clone(), tokens: d.tokens }).collect(),
+        Period::Year { .. } => {
             let mut m = vec![0i64; 12];
             for (k, d) in &days {
                 m[date_of(*k).month0() as usize] += d.tokens;
             }
             m.into_iter().enumerate().map(|(i, t)| MonthOut { label: format!("{}月", i + 1), tokens: t }).collect()
         }
-        None => {
+        _ => {
             let mut m: HashMap<i32, i64> = HashMap::new();
             for (k, d) in &days {
                 let date = date_of(*k);
@@ -378,8 +412,8 @@ pub fn build(scan: &ScanResult, year: Option<i32>) -> Report {
         }
     };
 
-    let (heat_lo, heat_hi) = match year {
-        Some(y) => (key_of(NaiveDate::from_ymd_opt(y, 1, 1).unwrap()), key_of(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())),
+    let (heat_lo, heat_hi) = match range {
+        Some(r) => r,
         None => {
             let hi = active.last().copied().unwrap_or(today()).max(today());
             let wd = date_of(hi).weekday().num_days_from_monday() as i64;
@@ -394,6 +428,8 @@ pub fn build(scan: &ScanResult, year: Option<i32>) -> Report {
 
     let mut r = Report {
         year,
+        period: PeriodInfo::new(&period, now),
+        previous: period.comparison(now).map(|(span, _)| totals(scan, span)),
         years: available_years(scan),
         today: date_str(today()),
         tokens: TokensOut { input: tokens.input, output: tokens.output, cache_read: tokens.cache_read, cache_write: tokens.cache_write, total: tokens.total() },
@@ -415,7 +451,8 @@ pub fn build(scan: &ScanResult, year: Option<i32>) -> Report {
         streak_end: (longest_streak > 0).then(|| date_str(streak_start + longest_streak as i64 - 1)),
         busiest_day,
         days: day_list,
-        monthly,
+        series,
+        daily,
         hourly,
         weekday,
         peak_hour,

@@ -1,12 +1,12 @@
 #!/bin/zsh
 # Builds "AI 年度报告.app" into ./dist (release build, app icon, ad-hoc signed).
 #   ./build-app.sh            this Mac's architecture
-#   UNIVERSAL=1 ./build-app.sh  Apple silicon + Intel (needs Xcode)
+#   UNIVERSAL=1 ./build-app.sh  Apple silicon + Intel
 #   ./build-app.sh --dmg      also packs dist/AI-Wrapped-<version>-mac.dmg
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 APP_NAME="AI 年度报告"
 APP="dist/$APP_NAME.app"
 

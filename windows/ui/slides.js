@@ -6,8 +6,30 @@ const bar = (fraction, color, h = 14, delay = 0.3) =>
   `<div class="bar" style="--c:${color};--h:${h}px"><i data-w="${Math.max(0, Math.min(1, fraction))}" data-delay="${delay}"></i></div>`;
 
 const ICON_CAL = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>`;
+const ICON_ARROW = `<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>`;
+// Small glyphs for the weekly highlights (sparkle, flame, folder, chip).
+const ICONS = {
+  agent: `<svg viewBox="0 0 16 16"><path d="M8 1.5l1.4 4.1 4.1 1.4-4.1 1.4L8 12.5 6.6 8.4 2.5 7l4.1-1.4z" fill="currentColor"/><path d="M12.5 11l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="currentColor"/></svg>`,
+  day: `<svg viewBox="0 0 16 16"><path d="M8.5 1.5c.4 2.3 3.5 3.6 3.5 7.1A4 4 0 0 1 4 8.6c0-1.6.9-2.8 1.8-3.6.1 1.2.7 2 1.5 2.4-.2-2.2.3-4.4 1.2-5.9z" fill="currentColor"/></svg>`,
+  project: `<svg viewBox="0 0 16 16"><path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h3.2l1.5 1.6H13a1.5 1.5 0 0 1 1.5 1.5v5.4A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5z" fill="currentColor"/></svg>`,
+  model: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="4" y="4" width="8" height="8" rx="1.5"/><rect x="6.3" y="6.3" width="3.4" height="3.4" rx=".6" fill="currentColor"/><path d="M6 1.5V4M10 1.5V4M6 12v2.5M10 12v2.5M1.5 6H4M1.5 10H4M12 6h2.5M12 10h2.5"/></svg>`,
+};
 
 function slideList(r) {
+  // A week or month is a lighter read: the summary up front, no year-scale pages.
+  if (r.period.isShort) {
+    const empty = r.tokens.total === 0 && r.promptCount === 0;
+    if (empty) return ["cover", "week"];
+    const s = ["cover", "week", "tokens"];
+    if (r.promptCount > 0) s.push("talk");
+    if (r.agents.length) s.push("agents");
+    if (r.models.length) s.push("models");
+    if (r.toolCallCount > 0) s.push("tools");
+    if (r.promptCount > 0) s.push("rhythm");
+    if (r.projects.length) s.push("projects");
+    s.push("summary");
+    return s;
+  }
   const s = ["cover"];
   if (r.firstPrompt) s.push("first");
   s.push("tokens");
@@ -24,27 +46,90 @@ function slideList(r) {
 
 const SLIDES = {
   cover: {
-    palette: "cover",
-    html(r, ctx) {
+    palette: (r) => (r.period.isShort ? "weeklyCover" : "cover"),
+    html(r) {
+      const p = r.period;
       const names = r.agents.slice(0, 3).map((a) => a.name).join("、");
       const lead = r.agents.length > 3 ? `${names} 等 ${r.agents.length} 个 agent，` : names ? `${names}，` : "";
-      const yearLabel = r.year ? `${r.year} 年` : "全部时间";
+      let line = `${esc(lead)}${Fmt.grouped(r.sessionCount)} 次对话，都在这里了。数据只在本机读取。`;
+      if (p.isShort) {
+        const empty = r.tokens.total === 0 && r.promptCount === 0;
+        const partial = p.elapsedDays < p.totalDays;
+        const note = p.kind === "thisWeek" && partial ? `本周才过了 ${p.elapsedDays} 天，周日晚上再来看完整版。`
+          : p.kind === "thisMonth" && partial ? `这个月才过了 ${p.elapsedDays} 天。` : "数据只在本机读取。";
+        line = empty ? `${p.phrase}还没有和 AI 聊过。去开个头吧。` : `${esc(lead)}${Fmt.grouped(r.sessionCount)} 次对话。${note}`;
+      }
+      const hero = p.isShort ? p.rangeText : r.year ?? "ALL TIME";
+      const heroSize = p.isWeek ? 136 : p.isShort ? 200 : r.year ? 210 : 150;
       return `
         <div class="cover-top">
-          <div class="eyebrow rv" style="--d:0s">AI WRAPPED</div>
+          <div class="eyebrow rv" style="--d:0s">${p.isShort ? `AI WRAPPED · ${p.isWeek ? "WEEKLY" : "MONTHLY"}` : "AI WRAPPED"}</div>
           <div class="year-btn rv" style="--d:.1s">
-            <button data-act="year-menu">${ICON_CAL}<span>${yearLabel}</span><span style="opacity:.6">▾</span></button>
+            <button data-act="year-menu">${ICON_CAL}<span>${esc(p.label)}</span><span style="opacity:.6">▾</span></button>
           </div>
         </div>
         <div class="grow"></div>
         <p class="h rv" style="--d:.15s;font-size:40px;opacity:.85">你的</p>
-        <div class="display cover-year rv" style="--d:.25s;font-size:${r.year ? 210 : 150}px">${r.year ?? "ALL TIME"}</div>
-        <div class="rv" style="--d:.35s;font-size:60px;font-weight:800">AI 年度报告</div>
-        <p class="sub rv" style="--d:.5s;margin-top:14px">${esc(lead)}${Fmt.grouped(r.sessionCount)} 次对话，都在这里了。数据只在本机读取。</p>
+        <div class="display cover-year ${p.isShort ? "night" : ""} rv" style="--d:.25s;font-size:${heroSize}px;white-space:nowrap${p.isWeek ? ";margin:4px 0 6px" : ""}">${esc(hero)}</div>
+        <div class="rv" style="--d:.35s;font-size:60px;font-weight:800">${p.isShort ? `${esc(p.label)} · ${p.reportName}` : p.reportName}</div>
+        <p class="sub rv" style="--d:.5s;margin-top:14px">${line}</p>
         <div class="grow"></div>
         <div class="cta rv" style="--d:.65s">
-          <button data-act="next">开始回顾 <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
-          <span style="font-size:14px;color:var(--faint)">← → 或空格翻页</span>
+          <button data-act="next" class="${p.isShort ? "night" : ""}">${p.isShort ? `看看${esc(p.label)}` : "开始回顾"} ${ICON_ARROW}</button>
+          <button class="ghost" data-act="${p.isShort ? "to-year" : "to-week"}">${p.isShort ? "✦&nbsp; 回到年度报告" : `${ICON_CAL}&nbsp; 本周小结`}</button>
+          <span style="font-size:14px;color:var(--faint);margin-left:4px">← → 或空格翻页</span>
+        </div>`;
+    },
+  },
+
+  week: {
+    palette: "weekly",
+    html(r) {
+      const p = r.period, prev = r.previous;
+      const kpi = (label, value, before, suffix, d) => {
+        const ch = delta(value, before);
+        const unit = Fmt.unit(value) + suffix;
+        const was = before == null ? "&nbsp;" : `${esc(p.comparisonLabel)} ${Fmt.big(before)}${suffix ? " " + suffix : ""}`;
+        return `
+          <div class="card kpi rv" style="--d:${d}s">
+            <div class="k-label">${label}</div>
+            <div class="k-value"><span class="display">${count(value)}</span><span class="k-unit">${unit}</span></div>
+            <span class="delta ${ch.tone}">${ch.arrow}&nbsp;${ch.text}</span>
+            <div class="k-prev">${was}</div>
+          </div>`;
+      };
+      const total = Math.max(1, r.tokens.total);
+      const top = r.agents[0], model = r.models[0], project = r.projects[0], busy = r.busiestDay;
+      const busyText = busy && (busy.tokens || busy.prompts)
+        ? p.isWeek ? `周${Fmt.weekday[(new Date(busy.date + "T00:00:00Z").getUTCDay() + 6) % 7]} · ${Fmt.shortDay(busy.date)}` : Fmt.day(busy.date)
+        : null;
+      const row = (icon, title, value, detail, dot) => `
+        <div class="hl">
+          <span class="hl-icon">${ICONS[icon]}</span>
+          <div class="hl-text"><small>${title}</small><b>${dot ? `<i style="background:${dot}"></i>` : ""}${esc(value ?? "—")}</b></div>
+          <span class="hl-detail">${detail ?? ""}</span>
+        </div>`;
+      return `
+        <div class="eyebrow rv">${p.isWeek ? `WEEKLY · ${esc(p.badge)} · ${esc(p.rangeText)}` : `MONTHLY · ${esc(p.rangeText)}`}</div>
+        <div class="grow"></div>
+        <p class="h rv" style="--d:.1s">${p.phrase}，你和 AI</p>
+        <p class="sub rv" style="--d:.15s;font-size:17px;margin-top:8px;color:rgba(255,255,255,.6)">${esc(p.basis)}</p>
+        <div class="kpis">
+          ${kpi("Tokens", r.tokens.total, prev?.tokens, "", 0.2)}
+          ${kpi("对话", r.sessionCount, prev?.sessions, "次", 0.28)}
+          ${kpi("消息", r.promptCount, prev?.prompts, "条", 0.36)}
+          ${kpi("活跃", r.activeDays, prev?.activeDays, "天", 0.44)}
+        </div>
+        <div class="grow"></div>
+        <div style="display:flex;gap:28px;align-items:flex-end">
+          <div class="rv" style="--d:.5s;flex:1;min-width:0">${dailyChartHTML(r)}</div>
+          <div class="card highlights rv" style="--d:.62s">
+            <div class="label" style="margin-bottom:4px">${esc(p.label)}之最</div>
+            ${row("agent", "最常用的 agent", top?.name, top ? (top.tokens > 0 ? `${Fmt.percent(top.tokens, total)} tokens` : `${top.prompts} 条消息`) : "", top?.color)}
+            ${row("day", "最忙的一天", busyText, busyText ? (busy.tokens ? Fmt.big(busy.tokens) : `${busy.prompts} 条消息`) : "")}
+            ${row("project", "主要项目", project?.name, project ? `${project.prompts} 条消息` : "")}
+            ${row("model", "最爱模型", model?.name, model ? Fmt.percent(model.tokens, total) : "")}
+          </div>
         </div>`;
     },
   },
@@ -78,7 +163,7 @@ const SLIDES = {
       return `
         <div class="eyebrow rv">TOKENS</div>
         <div class="grow"></div>
-        <p class="h rv" style="--d:.1s">${r.year ? "这一年，你和 AI 一共消耗了" : "到目前为止，你和 AI 一共消耗了"}</p>
+        <p class="h rv" style="--d:.1s">${r.period.phrase}，你和 AI 一共消耗了</p>
         <div class="rv" style="--d:.2s;display:flex;align-items:baseline;gap:14px">
           <span class="display grad" style="font-size:150px">${count(total)}</span>
           <span class="unit">${Fmt.unit(total)} tokens</span>
@@ -254,7 +339,7 @@ const SLIDES = {
         <div class="grow"></div>
         <div class="rv" style="--d:.5s;display:flex;gap:18px;align-items:flex-end">
           ${b ? `<div class="card" style="flex:none;width:340px"><span style="font-size:14px;font-weight:600">最忙的一天</span><b style="font-size:30px;margin:6px 0">${Fmt.day(b.date, !r.year)}</b><span style="font-size:15px">${Fmt.big(b.tokens)} tokens · 你发了 ${b.prompts} 条消息</span></div>` : ""}
-          ${monthsHTML(r.monthly, "var(--accent)", 112)}
+          ${monthsHTML(r.series, "var(--accent)", 112)}
         </div>`;
     },
   },
@@ -314,8 +399,8 @@ const SLIDES = {
           <img class="rv" style="--d:.1s" src="${ctx.cardURL}" alt="分享卡片">
           <div class="rv" style="--d:.3s;display:flex;flex-direction:column;gap:18px">
             <div class="eyebrow">就是这样</div>
-            <div style="font-size:40px;font-weight:800;line-height:1.3">这是你的<br>${r.year ? `${r.year} 年` : "全部"} AI 年度报告</div>
-            <p class="sub" style="font-size:17px">保存成图片发给朋友，或者明年再来对比。</p>
+            <div style="font-size:40px;font-weight:800;line-height:1.3">这是你的<br>${summaryName(r)}</div>
+            <p class="sub" style="font-size:17px">${r.period.isWeek ? "保存成图片，下周再来看看有没有进步。" : r.period.isShort ? "保存成图片，下个月再来对比。" : "保存成图片发给朋友，或者明年再来对比。"}</p>
             <div class="actions">
               <button class="primary" data-act="save">⤓&nbsp; 保存为图片…</button>
               <button data-act="copy">⧉&nbsp; 复制图片</button>
@@ -388,4 +473,34 @@ function monthsHTML(months, accent, height) {
   const every = Math.max(1, Math.floor(months.length / 12));
   return `<div class="months" style="height:${height}px">${months.map((m, i) => `
     <div><i class="${i === peak ? "top" : ""}" data-hgt="${Math.max(3, ((height - 20) * m.tokens) / max)}"></i><small style="${i === peak ? "opacity:1" : ""}">${i % every === 0 ? m.label : "&nbsp;"}</small></div>`).join("")}</div>`;
+}
+
+function summaryName(r) {
+  const p = r.period;
+  if (p.kind === "year") return `${r.year} 年 AI 年度报告`;
+  if (p.kind === "all") return "全部 AI 年度报告";
+  if (p.isWeek) return `${p.label} AI 周报`;
+  return `${p.badge} AI 月报`;
+}
+
+/** One bar per day; the busiest lit in the accent color, days still to come dashed. */
+function dailyChartHTML(r) {
+  const days = r.daily;
+  const isWeek = r.period.isWeek;
+  const max = Math.max(1, ...days.map((d) => d.tokens));
+  const peak = days.reduce((best, d, i) => (d.tokens > 0 && (best < 0 || d.tokens > days[best].tokens) ? i : best), -1);
+  const maxBar = 236 - 28 - (isWeek ? 36 : 16) - 28;
+  const cols = days.map((d, i) => {
+    const h = Math.max(6, (maxBar * d.tokens) / max);
+    const n = +d.date.slice(8);
+    const label = isWeek
+      ? `<b class="${d.isToday ? "today" : ""}">${d.isToday ? "今天" : d.label}</b><small>${Fmt.shortDay(d.date)}</small>`
+      : `<b>${n === 1 || n % 5 === 0 || i === peak ? n : "&nbsp;"}</b>`;
+    const barEl = d.isFuture
+      ? `<i class="future"></i>`
+      : `<i class="${i === peak ? "peak" : ""}" data-hgt="${h}">${i === peak ? `<em>${Fmt.big(d.tokens)}</em>` : ""}</i>`;
+    return `<div class="dcol ${d.isFuture ? "is-future" : ""} ${i === peak ? "is-peak" : ""}">${barEl}<div class="dlabel">${label}</div></div>`;
+  }).join("");
+  return `<div class="label">每天的 tokens</div>
+    <div class="daily ${isWeek ? "is-week" : "is-month"}" style="height:208px">${cols}</div>`;
 }
