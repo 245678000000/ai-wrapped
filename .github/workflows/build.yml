@@ -150,14 +150,15 @@ jobs:
     needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
+      # Check out first: checkout cleans the workspace, which would delete downloaded assets.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+
       - uses: actions/download-artifact@v4
         with:
           path: assets
           merge-multiple: true
-
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github
 
       - name: Publish release
         env:
