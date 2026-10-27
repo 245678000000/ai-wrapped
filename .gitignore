@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+# Built app and exported cards contain the builder's own stats.
+dist/
+*.png
+.DS_Store
