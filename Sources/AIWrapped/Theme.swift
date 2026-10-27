@@ -260,6 +260,15 @@ enum Fmt {
         return f.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 
+    /// "$3,512", "$42.37", "$1.25M"; precision follows `reference` so count-ups keep their shape.
+    static func usd(_ v: Double, like reference: Double? = nil) -> String {
+        let ref = reference ?? v
+        if ref >= 1e6 { return String(format: "$%.2fM", v / 1e6) }
+        if ref >= 100 { return "$" + grouped(Int(v.rounded())) }
+        if v > 0 && v < 0.01 { return "<$0.01" }
+        return String(format: "$%.2f", v)
+    }
+
     static func percent(_ part: Double, of whole: Double) -> String {
         guard whole > 0 else { return "0%" }
         let p = part / whole * 100

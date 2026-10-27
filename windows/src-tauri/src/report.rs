@@ -2,6 +2,7 @@
 
 use crate::model::*;
 use crate::period::{totals, weekday_index, Period, PeriodInfo, PeriodTotals, WEEKDAYS};
+use crate::pricing::{Cost, ModelPrice};
 use crate::util::pretty_model_name;
 use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone};
 use serde::Serialize;
@@ -63,6 +64,7 @@ pub struct ModelStat {
     pub color: String,
     pub tokens: i64,
     pub calls: usize,
+    pub cost: f64,
 }
 
 #[derive(Serialize, Clone)]
@@ -145,6 +147,8 @@ pub struct Report {
     pub years: Vec<i32>,
     pub today: String,
     pub tokens: TokensOut,
+    /// What `tokens` would cost at each model's official API list price.
+    pub cost: Cost,
     pub agents: Vec<AgentStat>,
     pub models: Vec<ModelStat>,
     pub session_count: usize,
@@ -212,7 +216,9 @@ pub fn build(scan: &ScanResult, period: Period) -> Report {
 
     let mut tokens = Tokens::default();
     let mut agent_stats: HashMap<&'static str, AgentStat> = HashMap::new();
-    let mut model_stats: HashMap<String, (i64, usize)> = HashMap::new();
+    let mut model_stats: HashMap<String, (i64, usize, f64)> = HashMap::new();
+    let mut prices: HashMap<String, ModelPrice> = HashMap::new();
+    let mut cost = Cost::default();
     let mut model_agent_tokens: HashMap<String, HashMap<&'static str, (i64, Agent)>> = HashMap::new();
     let mut days: HashMap<DayKey, DayOut> = HashMap::new();
     let mut session_tokens: HashMap<&str, i64> = HashMap::new();
@@ -224,9 +230,15 @@ pub fn build(scan: &ScanResult, period: Period) -> Report {
         tokens.add(&u.tokens);
         agent_entry(&mut agent_stats, u.agent).tokens += total;
         let name = pretty_model_name(&u.model);
+        let mut c = prices.entry(name.clone()).or_insert_with(|| ModelPrice::of(&name)).cost(&u.tokens);
+        if let Some(recorded) = u.cost {
+            c.scale_to(recorded);
+        }
+        cost.add(&c);
         let e = model_stats.entry(name.clone()).or_default();
         e.0 += total;
         e.1 += 1;
+        e.2 += c.total();
         let ma = model_agent_tokens.entry(name).or_default().entry(u.agent.id).or_insert((0, u.agent));
         ma.0 += total;
         days.entry(d).or_default().tokens += total;
@@ -237,10 +249,10 @@ pub fn build(scan: &ScanResult, period: Period) -> Report {
     }
     let mut models: Vec<ModelStat> = model_stats
         .into_iter()
-        .filter(|(_, (t, _))| *t > 0)
-        .map(|(name, (t, calls))| {
+        .filter(|(_, (t, _, _))| *t > 0)
+        .map(|(name, (t, calls, cost))| {
             let top = model_agent_tokens[&name].values().max_by_key(|(t, _)| *t).map(|(_, a)| *a).unwrap_or(CLAUDE_CODE);
-            ModelStat { name, agent: top.name.into(), color: top.color.into(), tokens: t, calls }
+            ModelStat { name, agent: top.name.into(), color: top.color.into(), tokens: t, calls, cost }
         })
         .collect();
     models.sort_by(|a, b| b.tokens.cmp(&a.tokens));
@@ -433,6 +445,7 @@ pub fn build(scan: &ScanResult, period: Period) -> Report {
         years: available_years(scan),
         today: date_str(today()),
         tokens: TokensOut { input: tokens.input, output: tokens.output, cache_read: tokens.cache_read, cache_write: tokens.cache_write, total: tokens.total() },
+        cost,
         agents,
         models,
         session_count: conversations.len(),

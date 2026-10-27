@@ -3,6 +3,7 @@
 
 mod model;
 mod period;
+mod pricing;
 mod report;
 mod scan;
 mod util;
@@ -96,6 +97,8 @@ fn run_cli(args: &[String]) -> bool {
             }
             let t = &r.tokens;
             println!("tokens total={} in={} out={} cacheR={} cacheW={}", t.total, t.input, t.output, t.cache_read, t.cache_write);
+            let c = &r.cost;
+            println!("cost ${:.2} in={:.2} out={:.2} cacheR={:.2} cacheW={:.2} saved={:.2}", c.total(), c.input, c.output, c.cache_read, c.cache_write, c.cache_savings);
             println!("sessions={} prompts={} chars={} activeDays={} streak={}", r.session_count, r.prompt_count, r.char_count, r.active_days, r.longest_streak);
             println!("agents:");
             for a in &r.agents {
@@ -103,7 +106,7 @@ fn run_cli(args: &[String]) -> bool {
             }
             println!("models:");
             for m in r.models.iter().take(6) {
-                println!("  {} [{}] tokens={} calls={}", m.name, m.agent, m.tokens, m.calls);
+                println!("  {} [{}] tokens={} calls={} cost={:.2}", m.name, m.agent, m.tokens, m.calls, m.cost);
             }
             println!("tool calls={} skills={} subagents={}", r.tool_call_count, r.skill_count, r.subagent_count);
             println!("categories: {}", r.tool_categories.iter().take(10).map(|c| format!("{}={}", c.name, c.count)).collect::<Vec<_>>().join(", "));

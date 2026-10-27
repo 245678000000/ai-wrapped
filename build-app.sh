@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="1.2.0"
+VERSION="1.3.0"
 APP_NAME="AI 年度报告"
 APP="dist/$APP_NAME.app"
 

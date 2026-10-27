@@ -57,14 +57,15 @@ function setBackground(name) {
 function animateIn(root) {
   root.querySelectorAll("[data-count]").forEach((el) => {
     const target = +el.dataset.count, ref = +el.dataset.ref || target;
+    const format = el.dataset.fmt === "usd" ? Fmt.usd : Fmt.scaled;
     const t0 = performance.now(), dur = 1700, delay = 250;
     const tick = (now) => {
       const p = Math.min(1, Math.max(0, (now - t0 - delay) / dur));
       const eased = 1 - Math.pow(1 - p, 4);
-      el.textContent = Fmt.scaled(target * eased, ref);
+      el.textContent = format(target * eased, ref);
       if (p < 1) requestAnimationFrame(tick);
     };
-    el.textContent = Fmt.scaled(0, ref);
+    el.textContent = format(0, ref);
     requestAnimationFrame(tick);
   });
   requestAnimationFrame(() => requestAnimationFrame(() => {

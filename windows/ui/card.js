@@ -89,7 +89,7 @@ function drawCard(r, scale = 2) {
 
   const prev = short ? r.previous : null;
   const cells = [
-    ["Tokens", Fmt.big(r.tokens.total), prev && delta(r.tokens.total, prev.tokens)],
+    ["Tokens", Fmt.big(r.tokens.total), prev && delta(r.tokens.total, prev.tokens), spend(r.cost)],
     ["对话", `${Fmt.grouped(r.sessionCount)} 次`, prev && delta(r.sessionCount, prev.sessions)],
     ["消息", `${Fmt.grouped(r.promptCount)} 条`, prev && delta(r.promptCount, prev.prompts)],
     ["活跃", `${r.activeDays} 天`, prev && delta(r.activeDays, prev.activeDays)],
@@ -97,7 +97,7 @@ function drawCard(r, scale = 2) {
     ["用过的 agent", `${r.agents.length} 个`], ["工具调用", `${Fmt.big(r.toolCallCount)} 次`],
   ];
   const cw = (CARD_W - P * 2 - 18) / 2, ch = 74;
-  cells.forEach(([k, v, change], i) => {
+  cells.forEach(([k, v, change, money], i) => {
     const cx = P + (i % 2) * (cw + 18), cy = 240 + Math.floor(i / 2) * (ch + 14);
     roundRect(ctx, cx, cy, cw, ch, 18);
     ctx.fillStyle = "rgba(255,255,255,.1)";
@@ -123,9 +123,19 @@ function drawCard(r, scale = 2) {
       ctx.fillStyle = color;
       ctx.fillText(label, cx + cw - 12 - w + 8, cy + 26);
     }
+    // The token total carries its price in gold right after it.
+    const extra = money > 0 ? `≈ ${Fmt.usd(money)}` : "";
+    ctx.font = `700 17px ${CARD_FONT}`;
+    const extraW = extra ? ctx.measureText(extra).width + 12 : 0;
     ctx.fillStyle = "#fff";
-    fitText(ctx, v, cw - 32, 26, 800, CARD_FONT);
+    fitText(ctx, v, cw - 32 - extraW, 26, 800, CARD_FONT);
     ctx.fillText(v, cx + 16, cy + 58);
+    if (extra) {
+      const w = ctx.measureText(v).width;
+      ctx.font = `700 17px ${CARD_FONT}`;
+      ctx.fillStyle = GOLD;
+      ctx.fillText(extra, cx + 16 + w + 12, cy + 58);
+    }
   });
 
   // Monthly bars

@@ -14,6 +14,13 @@ const Fmt = {
   unit(ref) { return Fmt.scale(ref)[1]; },
   big(v) { return Fmt.scaled(v) + Fmt.unit(v); },
   grouped(n) { return Math.round(n).toLocaleString("en-US"); },
+  /** "$3,512", "$42.37", "$1.25M"; precision follows `ref` so count-ups keep their shape. */
+  usd(v, ref = v) {
+    if (ref >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+    if (ref >= 100) return "$" + Fmt.grouped(v);
+    if (v > 0 && v < 0.01) return "<$0.01";
+    return `$${v.toFixed(2)}`;
+  },
   percent(part, whole) {
     if (!whole) return "0%";
     const p = (part / whole) * 100;
@@ -34,6 +41,11 @@ const Fmt = {
   },
   weekday: ["一", "二", "三", "四", "五", "六", "日"],
 };
+
+/** Total of the report's estimated API cost in USD. */
+const spend = (c) => (c ? c.input + c.output + c.cacheRead + c.cacheWrite : 0);
+/** Money is champagne gold everywhere it appears. */
+const GOLD = "#FFDB8E";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 

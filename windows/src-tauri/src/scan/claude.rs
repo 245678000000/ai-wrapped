@@ -99,7 +99,7 @@ impl ClaudeFormat {
                         cache_read: i(u, "cache_read_input_tokens"),
                         cache_write: i(u, "cache_creation_input_tokens"),
                     };
-                    let rec = Usage { agent, model: model.to_string(), time, tokens: t, session: key.clone() };
+                    let rec = Usage { agent, model: model.to_string(), time, tokens: t, session: key.clone(), cost: None };
                     match s(msg, "id") {
                         Some(id) => {
                             if out.usage.get(id).map_or(true, |o| o.tokens.total() < t.total()) {

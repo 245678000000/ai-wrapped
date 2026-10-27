@@ -50,6 +50,8 @@
 去重：Claude 格式按消息 id；千问办公与 QoderWork CN 的迁移副本按 id 合并；Cursor 的 agent-transcripts 是 IDE 对话的副本，只读 IDE 里没有的。
 Token 总量 = 输入 + 输出 + 缓存读取 + 缓存写入；有的 agent 把缓存算进输入，扫描时按记录里的 total 自动判断并拆开。
 
+**约合多少美元：** 每条用量按它的模型、用官方 API 标价（输入、输出、缓存读取、缓存写入分开计价，2026 年 10 月的价格）折算成美元，Token 页、周报小结和分享卡片上都会显示。Grok Build 自己记了每轮花费，直接用它记的数；没有公开价格的模型按一个中等价位估算。订阅制（Claude Max、ChatGPT Plus 等）实际付的钱可能少得多，这个数字更像是“按量付费的话要花多少”。
+
 ## 构建
 
 ### macOS（Swift / SwiftUI）

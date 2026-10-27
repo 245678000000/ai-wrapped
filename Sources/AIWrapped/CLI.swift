@@ -39,9 +39,10 @@ enum CLI {
             print("daily:", r.daily.map { "\(Fmt.shortDay($0.day))=\(Fmt.big($0.stat.tokens))/\($0.stat.prompts)" }.joined(separator: " "))
         }
         print("tokens total=\(r.tokens.total) in=\(r.tokens.input) out=\(r.tokens.output) cacheR=\(r.tokens.cacheRead) cacheW=\(r.tokens.cacheWrite)")
+        print(String(format: "cost $%.2f in=%.2f out=%.2f cacheR=%.2f cacheW=%.2f saved=%.2f", r.cost.total, r.cost.input, r.cost.output, r.cost.cacheRead, r.cost.cacheWrite, r.cost.cacheSavings))
         print("sessions=\(r.sessionCount) prompts=\(r.promptCount) chars=\(r.charCount) activeDays=\(r.activeDays) streak=\(r.longestStreak)")
         print("agents:"); r.agents.forEach { print("  \($0.agent.displayName) tokens=\($0.tokens) sessions=\($0.sessions) prompts=\($0.prompts)") }
-        print("models:"); r.models.prefix(8).forEach { print("  \($0.name) [\($0.agent.displayName)] tokens=\($0.tokens) calls=\($0.calls)") }
+        print("models:"); r.models.prefix(8).forEach { print("  \($0.name) [\($0.agent.displayName)] tokens=\($0.tokens) calls=\($0.calls) cost=\(String(format: "%.2f", $0.cost))") }
         print("tool calls=\(r.toolCallCount) skills=\(r.skillCount) subagents=\(r.subagentCount)")
         print("categories:", r.toolCategories.prefix(12).map { "\($0.name)=\($0.count)" }.joined(separator: ", "))
         print("raw tools:", r.rawTools.prefix(15).map { "\($0.name)=\($0.count)" }.joined(separator: ", "))

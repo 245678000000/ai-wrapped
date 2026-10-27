@@ -36,7 +36,7 @@ struct ShareCard: View {
 
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 18) {
                     GridRow {
-                        cell("Tokens", Fmt.big(r.tokens.total), r.tokens.total, r.previous?.tokens)
+                        cell("Tokens", Fmt.big(r.tokens.total), r.tokens.total, r.previous?.tokens, money: r.cost.total)
                         cell("对话", Fmt.grouped(r.sessionCount) + " 次", r.sessionCount, r.previous?.sessions)
                     }
                     GridRow {
@@ -77,18 +77,19 @@ struct ShareCard: View {
 
     private var short: Bool { r.period.isShort }
 
-    func cell<N: BinaryInteger>(_ k: String, _ v: String, _ current: N, _ previous: N?) -> some View {
-        cell(k, v, delta: short ? DeltaChip(current: Double(current), previous: previous.map(Double.init)) : nil)
+    func cell<N: BinaryInteger>(_ k: String, _ v: String, _ current: N, _ previous: N?, money: Double? = nil) -> some View {
+        cell(k, v, delta: short ? DeltaChip(current: Double(current), previous: previous.map(Double.init)) : nil, money: money)
     }
 
-    func cell(_ k: String, _ v: String, delta: DeltaChip? = nil) -> some View {
+    func cell(_ k: String, _ v: String, delta: DeltaChip? = nil, money: Double? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(k).font(.system(size: 13, weight: .semibold)).opacity(0.65)
                 Spacer(minLength: 4)
                 if let delta { delta.scaleEffect(0.82, anchor: .trailing).padding(.vertical, -4) }
             }
-            Text(v).font(.system(size: 26, weight: .heavy, design: .rounded)).lineLimit(1).minimumScaleFactor(0.6)
+            (Text(v) + Text(money.map { $0 > 0 ? "  ≈ " + Fmt.usd($0) : "" } ?? "").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundColor(TokensSlide.gold))
+                .font(.system(size: 26, weight: .heavy, design: .rounded)).lineLimit(1).minimumScaleFactor(0.6)
         }
         .padding(16)
         .frame(width: 242, alignment: .leading)

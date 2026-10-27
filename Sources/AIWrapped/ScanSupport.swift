@@ -319,9 +319,9 @@ final class Collector {
     }
 
     /// With an `id`, later records for the same id replace earlier ones when they are larger.
-    func usage(_ session: String, _ time: Double?, model: String?, _ t: TokenCounts?, id: String? = nil) {
+    func usage(_ session: String, _ time: Double?, model: String?, _ t: TokenCounts?, id: String? = nil, cost: Double? = nil) {
         guard let time, time > 0, let t, t.total > 0 else { return }
-        let rec = UsageRecord(agent: agent, model: model ?? "unknown", time: time, tokens: t, session: key(session))
+        let rec = UsageRecord(agent: agent, model: model ?? "unknown", time: time, tokens: t, session: key(session), cost: cost)
         if let id {
             if let i = usageByID[id] {
                 if result.usage[i].tokens.total < t.total { result.usage[i] = rec }

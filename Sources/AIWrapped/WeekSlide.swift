@@ -18,7 +18,7 @@ struct WeekSlide: View {
                 .padding(.top, 8)
                 .reveal(0.15)
             HStack(spacing: 16) {
-                kpi("Tokens", Double(r.tokens.total), r.previous.map { Double($0.tokens) }, suffix: "", delay: 0.2)
+                kpi("Tokens", Double(r.tokens.total), r.previous.map { Double($0.tokens) }, suffix: "", delay: 0.2, money: r.cost.total)
                 kpi("对话", Double(r.sessionCount), r.previous.map { Double($0.sessions) }, suffix: "次", delay: 0.28)
                 kpi("消息", Double(r.promptCount), r.previous.map { Double($0.prompts) }, suffix: "条", delay: 0.36)
                 kpi("活跃", Double(r.activeDays), r.previous.map { Double($0.activeDays) }, suffix: "天", delay: 0.44)
@@ -52,10 +52,17 @@ struct WeekSlide: View {
         }
     }
 
-    private func kpi(_ label: String, _ value: Double, _ previous: Double?, suffix: String, delay: Double) -> some View {
+    private func kpi(_ label: String, _ value: Double, _ previous: Double?, suffix: String, delay: Double, money: Double? = nil) -> some View {
         GlassCard(padding: 20) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(label).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.65))
+                HStack {
+                    Text(label).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.65))
+                    Spacer(minLength: 6)
+                    if let money, money > 0 {
+                        Text("≈ " + Fmt.usd(money)).font(.system(size: 14, weight: .bold, design: .rounded)).monospacedDigit()
+                            .foregroundStyle(TokensSlide.gold)
+                    }
+                }
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     CountUp(target: value, delay: delay + 0.1) { Fmt.scaled($0, like: value) }
                         .font(.display(44))

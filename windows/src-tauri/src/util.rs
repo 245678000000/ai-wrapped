@@ -420,8 +420,13 @@ impl Collector {
 
     /// With an `id`, later records for the same id replace earlier ones when they are larger.
     pub fn usage(&mut self, session: &str, time: Option<f64>, model: Option<&str>, t: Option<Tokens>, id: Option<&str>) {
+        self.usage_priced(session, time, model, t, id, None);
+    }
+
+    /// `usage` with the USD the agent recorded for it.
+    pub fn usage_priced(&mut self, session: &str, time: Option<f64>, model: Option<&str>, t: Option<Tokens>, id: Option<&str>, cost: Option<f64>) {
         let (Some(time), Some(t)) = (time.filter(|t| *t > 0.0), t.filter(|t| t.total() > 0)) else { return };
-        let rec = Usage { agent: self.agent, model: model.unwrap_or("unknown").to_string(), time, tokens: t, session: self.key(session) };
+        let rec = Usage { agent: self.agent, model: model.unwrap_or("unknown").to_string(), time, tokens: t, session: self.key(session), cost };
         if let Some(id) = id {
             if let Some(&i) = self.usage_by_id.get(id) {
                 if self.result.usage[i].tokens.total() < t.total() {

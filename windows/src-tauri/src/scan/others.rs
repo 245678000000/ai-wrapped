@@ -87,7 +87,9 @@ pub fn scan_grok() -> ScanResult {
                     match usage.get("modelUsage").and_then(|m| m.as_object()) {
                         Some(per_model) => {
                             for (model, raw) in per_model {
-                                c.usage(session, time, Some(model), normalize_usage(raw), Some(&format!("{turn}|{model}")));
+                                // Grok Build records what each turn cost, in 1e-10 USD ticks.
+                                let cost = raw.get("costUsdTicks").and_then(|v| v.as_f64()).filter(|t| *t > 0.0).map(|t| t / 1e10);
+                                c.usage_priced(session, time, Some(model), normalize_usage(raw), Some(&format!("{turn}|{model}")), cost);
                             }
                         }
                         None => c.usage(session, time, Some("grok"), normalize_usage(usage), Some(&turn)),

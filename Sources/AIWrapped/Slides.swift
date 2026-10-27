@@ -271,14 +271,16 @@ struct FirstSlide: View {
 
 struct TokensSlide: View {
     let r: Report
+    /// Money is champagne gold everywhere it appears.
+    static let gold = Color(hex: 0xFFDB8E)
 
     var body: some View {
         let total = Double(r.tokens.total)
-        let parts: [(String, Int64, Color)] = [
-            ("缓存读取", r.tokens.cacheRead, Color(hex: 0xFFD08A)),
-            ("缓存写入", r.tokens.cacheWrite, Color(hex: 0xFF9F5A)),
-            ("输入", r.tokens.input, Color(hex: 0xFF6B6B)),
-            ("输出", r.tokens.output, Color(hex: 0xFFF3E0)),
+        let parts: [(String, Int64, Double, Color)] = [
+            ("缓存读取", r.tokens.cacheRead, r.cost.cacheRead, Color(hex: 0xFFD08A)),
+            ("缓存写入", r.tokens.cacheWrite, r.cost.cacheWrite, Color(hex: 0xFF9F5A)),
+            ("输入", r.tokens.input, r.cost.input, Color(hex: 0xFF6B6B)),
+            ("输出", r.tokens.output, r.cost.output, Color(hex: 0xFFF3E0)),
         ]
         VStack(alignment: .leading, spacing: 0) {
             Eyebrow(text: "TOKENS", accent: Palette.tokens.accent).reveal(0)
@@ -293,6 +295,7 @@ struct TokensSlide: View {
             }
             .padding(.vertical, -10)
             .reveal(0.2)
+            if r.cost.total > 0 { price.padding(.top, 10).reveal(0.32) }
 
             // Composition bar
             GeometryReader { geo in
@@ -300,7 +303,7 @@ struct TokensSlide: View {
                     ForEach(parts.indices, id: \.self) { i in
                         let f = total > 0 ? Double(parts[i].1) / total : 0
                         if f > 0.002 {
-                            RoundedRectangle(cornerRadius: 6).fill(parts[i].2)
+                            RoundedRectangle(cornerRadius: 6).fill(parts[i].3)
                                 .frame(width: max(6, (geo.size.width - 9) * f))
                         }
                     }
@@ -312,9 +315,12 @@ struct TokensSlide: View {
             HStack(spacing: 26) {
                 ForEach(parts.indices, id: \.self) { i in
                     HStack(spacing: 8) {
-                        Circle().fill(parts[i].2).frame(width: 9, height: 9)
+                        Circle().fill(parts[i].3).frame(width: 9, height: 9)
                         Text(parts[i].0).opacity(0.75)
                         Text(Fmt.big(parts[i].1)).fontWeight(.bold)
+                        if r.cost.total > 0 {
+                            Text(partPrice(parts[i].2)).fontWeight(.semibold).monospacedDigit().foregroundStyle(Self.gold)
+                        }
                     }
                 }
             }
@@ -339,12 +345,42 @@ struct TokensSlide: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(Fmt.percent(Double(r.tokens.cacheRead), of: total)) 是缓存").font(.system(size: 26, weight: .heavy))
-                        Text("AI 反复“重读”上下文的部分，便宜又省时").font(.system(size: 14)).opacity(0.65)
+                        cacheNote.font(.system(size: 14))
                     }
                 }
             }
             .reveal(0.75)
         }
+    }
+
+    /// "≈ $3,120 | 按官方 API 价格折算": the token total, in money.
+    private var price: some View {
+        HStack(alignment: .center, spacing: 18) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("≈").font(.system(size: 40, weight: .heavy, design: .rounded)).foregroundStyle(Self.gold.opacity(0.75)).offset(y: -6)
+                CountUp(target: r.cost.total, delay: 0.6, duration: 1.8) { Fmt.usd($0, like: r.cost.total) }
+                    .font(.display(66))
+                    .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFF6DD), Self.gold, Color(hex: 0xFFB24D)], startPoint: .top, endPoint: .bottom))
+                    .shadow(color: Color(hex: 0xFFB24D).opacity(0.45), radius: 20)
+            }
+            Rectangle().fill(.white.opacity(0.22)).frame(width: 1, height: 38)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("按官方 API 价格折算的美元").font(.system(size: 16, weight: .bold)).opacity(0.88)
+                Text("\(r.models.count) 个模型，各按各的标价").font(.system(size: 13, weight: .medium)).opacity(0.55)
+            }
+        }
+    }
+
+    /// Same precision as the headline figure, so the legend reads as one column of money.
+    private func partPrice(_ v: Double) -> String {
+        r.cost.total >= 100 && v > 0 && v < 0.5 ? "<$1" : Fmt.usd(v, like: r.cost.total)
+    }
+
+    private var cacheNote: Text {
+        let saved = r.cost.cacheSavings
+        guard saved >= 1 else { return Text("AI 反复“重读”上下文的部分，便宜又省时").foregroundColor(.white.opacity(0.65)) }
+        return Text("多亏缓存，少花了 ").foregroundColor(.white.opacity(0.65))
+            + Text("≈ " + Fmt.usd(saved)).fontWeight(.bold).foregroundColor(Self.gold)
     }
 }
 

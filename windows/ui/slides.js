@@ -86,13 +86,13 @@ const SLIDES = {
     palette: "weekly",
     html(r) {
       const p = r.period, prev = r.previous;
-      const kpi = (label, value, before, suffix, d) => {
+      const kpi = (label, value, before, suffix, d, money = 0) => {
         const ch = delta(value, before);
         const unit = Fmt.unit(value) + suffix;
         const was = before == null ? "&nbsp;" : `${esc(p.comparisonLabel)} ${Fmt.big(before)}${suffix ? " " + suffix : ""}`;
         return `
           <div class="card kpi rv" style="--d:${d}s">
-            <div class="k-label">${label}</div>
+            <div class="k-label">${label}${money > 0 ? `<strong class="money">≈ ${Fmt.usd(money)}</strong>` : ""}</div>
             <div class="k-value"><span class="display">${count(value)}</span><span class="k-unit">${unit}</span></div>
             <span class="delta ${ch.tone}">${ch.arrow}&nbsp;${ch.text}</span>
             <div class="k-prev">${was}</div>
@@ -115,7 +115,7 @@ const SLIDES = {
         <p class="h rv" style="--d:.1s">${p.phrase}，你和 AI</p>
         <p class="sub rv" style="--d:.15s;font-size:17px;margin-top:8px;color:rgba(255,255,255,.6)">${esc(p.basis)}</p>
         <div class="kpis">
-          ${kpi("Tokens", r.tokens.total, prev?.tokens, "", 0.2)}
+          ${kpi("Tokens", r.tokens.total, prev?.tokens, "", 0.2, spend(r.cost))}
           ${kpi("对话", r.sessionCount, prev?.sessions, "次", 0.28)}
           ${kpi("消息", r.promptCount, prev?.prompts, "条", 0.36)}
           ${kpi("活跃", r.activeDays, prev?.activeDays, "天", 0.44)}
@@ -156,10 +156,21 @@ const SLIDES = {
   tokens: {
     palette: "tokens",
     html(r) {
-      const t = r.tokens, total = t.total;
-      const parts = [["缓存读取", t.cacheRead, "#FFD08A"], ["缓存写入", t.cacheWrite, "#FF9F5A"], ["输入", t.input, "#FF6B6B"], ["输出", t.output, "#FFF3E0"]];
+      const t = r.tokens, total = t.total, c = r.cost, usd = spend(c);
+      const parts = [["缓存读取", t.cacheRead, c.cacheRead, "#FFD08A"], ["缓存写入", t.cacheWrite, c.cacheWrite, "#FF9F5A"], ["输入", t.input, c.input, "#FF6B6B"], ["输出", t.output, c.output, "#FFF3E0"]];
       const stack = parts.filter((p) => total && p[1] / total > 0.002)
-        .map((p) => `<i style="flex:${p[1]};background:${p[2]}"></i>`).join("");
+        .map((p) => `<i style="flex:${p[1]};background:${p[3]}"></i>`).join("");
+      // Same precision as the headline figure, so the legend reads as one column of money.
+      const partPrice = (v) => (usd >= 100 && v > 0 && v < 0.5 ? "<$1" : Fmt.usd(v, usd));
+      const price = usd > 0 ? `
+        <div class="price rv" style="--d:.32s">
+          <div class="price-num"><i>≈</i><span class="display" data-count="${usd}" data-fmt="usd">${Fmt.usd(usd)}</span></div>
+          <div class="price-rule"></div>
+          <div class="price-note"><b>按官方 API 价格折算的美元</b><span>${r.models.length} 个模型，各按各的标价</span></div>
+        </div>` : "";
+      const cacheNote = c.cacheSavings >= 1
+        ? `多亏缓存，少花了 <strong class="money">≈ ${Fmt.usd(c.cacheSavings)}</strong>`
+        : "AI 反复“重读”上下文的部分，便宜又省时";
       return `
         <div class="eyebrow rv">TOKENS</div>
         <div class="grow"></div>
@@ -167,14 +178,14 @@ const SLIDES = {
         <div class="rv" style="--d:.2s;display:flex;align-items:baseline;gap:14px">
           <span class="display grad" style="font-size:150px">${count(total)}</span>
           <span class="unit">${Fmt.unit(total)} tokens</span>
-        </div>
+        </div>${price}
         <div class="stack rv" style="--d:.45s">${stack}</div>
-        <div class="legend rv" style="--d:.55s">${parts.map((p) => `<span><em style="background:${p[2]}"></em><small>${p[0]}</small><b>${Fmt.big(p[1])}</b></span>`).join("")}</div>
+        <div class="legend rv" style="--d:.55s">${parts.map((p) => `<span><em style="background:${p[3]}"></em><small>${p[0]}</small><b>${Fmt.big(p[1])}</b>${usd > 0 ? `<strong class="money">${partPrice(p[2])}</strong>` : ""}</span>`).join("")}</div>
         <div class="grow"></div>
         <div class="row rv" style="--d:.75s">
           <div class="card"><b>≈ ${Fmt.big(Math.max(1, total / 730000))} 部《红楼梦》</b><span>按一部约 73 万字、一字约一个 token 粗算</span></div>
           <div class="card"><b>AI 亲手写下 ${Fmt.big(t.output)}</b><span>≈ ${Fmt.big(Math.max(1, t.output / 30000))} 篇 3 万字的毕业论文</span></div>
-          <div class="card"><b>${Fmt.percent(t.cacheRead, total)} 是缓存</b><span>AI 反复“重读”上下文的部分，便宜又省时</span></div>
+          <div class="card"><b>${Fmt.percent(t.cacheRead, total)} 是缓存</b><span>${cacheNote}</span></div>
         </div>`;
     },
   },

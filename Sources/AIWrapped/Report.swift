@@ -20,6 +20,7 @@ struct ModelStat: Identifiable {
     var agent: AgentKind
     var tokens: Int64
     var calls: Int
+    var cost = 0.0
 }
 
 struct ProjectStat: Identifiable {
@@ -91,6 +92,8 @@ struct Report {
     }
 
     var tokens = TokenCounts()
+    /// What `tokens` would cost at each model's official API list price.
+    var cost = CostBreakdown()
     var agents: [AgentStat] = []
     var models: [ModelStat] = []
     var sessionCount = 0
@@ -152,6 +155,7 @@ struct Report {
         // Tokens, agents, models, days
         var agentStats: [AgentKind: AgentStat] = [:]
         var modelStats: [String: ModelStat] = [:]
+        var prices: [String: ModelPrice] = [:]
         var modelAgentTokens: [String: [AgentKind: Int64]] = [:]
         var sessionTokens: [String: Int64] = [:]
         var sessionSpan: [String: (Double, Double)] = [:]
@@ -160,7 +164,12 @@ struct Report {
             r.tokens += u.tokens
             agentStats[u.agent, default: AgentStat(agent: u.agent)].tokens += u.tokens.total
             let name = prettyModelName(u.model)
+            if prices[name] == nil { prices[name] = ModelPrice.of(name) }
+            var cost = prices[name]!.cost(u.tokens)
+            if let recorded = u.cost { cost.scale(to: recorded) }
+            r.cost += cost
             modelStats[name, default: ModelStat(name: name, agent: u.agent, tokens: 0, calls: 0)].tokens += u.tokens.total
+            modelStats[name]?.cost += cost.total
             modelStats[name]?.calls += 1
             modelAgentTokens[name, default: [:]][u.agent, default: 0] += u.tokens.total
             r.days[d, default: DayStat()].tokens += u.tokens.total

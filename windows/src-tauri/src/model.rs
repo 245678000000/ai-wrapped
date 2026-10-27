@@ -75,6 +75,8 @@ pub struct Usage {
     pub time: f64,
     pub tokens: Tokens,
     pub session: String,
+    /// USD the agent itself reported for this usage, when it records one (Grok Build).
+    pub cost: Option<f64>,
 }
 
 #[derive(Clone, Debug)]

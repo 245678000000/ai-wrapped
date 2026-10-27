@@ -84,7 +84,9 @@ enum GrokScanner {
                     let perModel = usage["modelUsage"] as? [String: [String: Any]] ?? ["grok": usage]
                     let turn = params.str("_meta.eventId") ?? UUID().uuidString
                     for (model, raw) in perModel {
-                        c.usage(session, time, model: model, normalizeUsage(raw), id: turn + "|" + model)
+                        // Grok Build records what each turn cost, in 1e-10 USD ticks.
+                        let ticks = (raw["costUsdTicks"] as? NSNumber)?.doubleValue ?? 0
+                        c.usage(session, time, model: model, normalizeUsage(raw), id: turn + "|" + model, cost: ticks > 0 ? ticks / 1e10 : nil)
                     }
                 }
             }

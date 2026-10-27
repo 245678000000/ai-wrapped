@@ -79,6 +79,8 @@ struct UsageRecord {
     var time: Double
     var tokens: TokenCounts
     var session: String
+    /// USD the agent itself reported for this usage, when it records one (Grok Build).
+    var cost: Double?
 }
 
 struct PromptRecord {
