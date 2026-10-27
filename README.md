@@ -2,6 +2,17 @@
 
 本地 macOS 应用，读取你电脑上各个 coding agent 的聊天记录，做成一份可以翻页的年度回顾。数据只在本机读取。
 
+<p align="center">
+  <img src="docs/screenshots/cover.webp" width="49%" alt="封面">
+  <img src="docs/screenshots/tokens.webp" width="49%" alt="Token 用量">
+</p>
+<p align="center">
+  <img src="docs/screenshots/agents.webp" width="49%" alt="Agent 排行：按 token 与按对话次数">
+  <img src="docs/screenshots/share-card.webp" width="49%" alt="可导出的分享卡片">
+</p>
+
+一共 12 页：封面 · 第一句话 · Token 用量 · 对话 · Agent 排行 · 模型 · 工具与子 agent · 作息时钟 · 活跃日历 · 项目 · 年度 AI 人格 · 分享卡片（可存成图片或复制）。封面右上角可以切换年份或看全部时间。
+
 ## 数据来源
 
 只读、只在本机。有 token 的统计 token；只存了积分或只存对话的，统计对话和消息。
