@@ -336,7 +336,7 @@ const SLIDES = {
 
   calendar: {
     palette: "calendar",
-    html(r) {
+    html(r, ctx) {
       const b = r.busiestDay;
       return `
         <div class="eyebrow rv">日历</div>
@@ -346,7 +346,7 @@ const SLIDES = {
         </div>
         <p class="sub rv" style="--d:.2s">${r.longestStreak > 1 ? `最长一口气连续了 ${r.longestStreak} 天` : "每一天都算数"}</p>
         <div class="grow"></div>
-        <div class="rv" style="--d:.35s">${heatmapHTML(r)}</div>
+        <div class="rv" style="--d:.35s">${heatmapHTML(r, ctx.width)}</div>
         <div class="grow"></div>
         <div class="rv" style="--d:.5s;display:flex;gap:18px;align-items:flex-end">
           ${b ? `<div class="card" style="flex:none;width:340px"><span style="font-size:14px;font-weight:600">最忙的一天</span><b style="font-size:30px;margin:6px 0">${Fmt.day(b.date, !r.year)}</b><span style="font-size:15px">${Fmt.big(b.tokens)} tokens · 你发了 ${b.prompts} 条消息</span></div>` : ""}
@@ -411,9 +411,10 @@ const SLIDES = {
           <div class="rv" style="--d:.3s;display:flex;flex-direction:column;gap:18px">
             <div class="eyebrow">就是这样</div>
             <div style="font-size:40px;font-weight:800;line-height:1.3">这是你的<br>${summaryName(r)}</div>
-            <p class="sub" style="font-size:17px">${r.period.isWeek ? "保存成图片，下周再来看看有没有进步。" : r.period.isShort ? "保存成图片，下个月再来对比。" : "保存成图片发给朋友，或者明年再来对比。"}</p>
+            <p class="sub" style="font-size:17px">${r.period.isWeek ? "存成图片或小视频，下周再来看看有没有进步。" : r.period.isShort ? "存成图片或小视频，下个月再来对比。" : "存成图片或小视频发给朋友，或者明年再来对比。"}</p>
             <div class="actions">
               <button class="primary" data-act="save">⤓&nbsp; 保存为图片…</button>
+              <button data-act="video">▶&nbsp; 导出小视频…</button>
               <button data-act="copy">⧉&nbsp; 复制图片</button>
               <button data-act="restart">↺&nbsp; 从头再看一遍</button>
             </div>
@@ -452,7 +453,7 @@ function clockSVG(hourly) {
 }
 
 /** GitHub-style year grid colored by token quartile. */
-function heatmapHTML(r) {
+function heatmapHTML(r, width = innerWidth / uiScale) {
   const toKey = (s) => Date.UTC(...s.split("-").map((n, i) => (i === 1 ? n - 1 : +n))) / 864e5;
   const lo = toKey(r.heatmapStart), hi = toKey(r.heatmapEnd);
   const weekday = (k) => (new Date(k * 864e5).getUTCDay() + 6) % 7;
@@ -467,7 +468,7 @@ function heatmapHTML(r) {
     return q < 0.25 ? 1 : q < 0.5 ? 2 : q < 0.8 ? 3 : 4;
   };
   const colors = ["rgba(255,255,255,.07)", "color-mix(in srgb, var(--accent) 30%, transparent)", "color-mix(in srgb, var(--accent) 50%, transparent)", "color-mix(in srgb, var(--accent) 75%, transparent)", "var(--accent)"];
-  const cell = Math.min(17, Math.floor((innerWidth / uiScale - 144 - (weeks - 1) * 3) / weeks));
+  const cell = Math.min(17, Math.floor((width - 144 - (weeks - 1) * 3) / weeks));
   let cells = "";
   for (let w = 0; w < weeks; w++) for (let d = 0; d < 7; d++) {
     const k = start + w * 7 + d;

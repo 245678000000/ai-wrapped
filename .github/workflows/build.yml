@@ -105,6 +105,21 @@ jobs:
           if ($app.HasExited) { throw "app exited early with $($app.ExitCode)" }
           Stop-Process -Id $app.Id
 
+      # The page renders the seeded report to MP4 in WebView2 on its own, then the app quits.
+      - name: Export a short video
+        shell: pwsh
+        run: |
+          $video = "$env:RUNNER_TEMP\ci-video.mp4"
+          $p = Start-Process "src-tauri/target/release/ai-wrapped.exe" -ArgumentList "--export-video", $video -PassThru
+          if (-not $p.WaitForExit(600000)) { Stop-Process -Id $p.Id; throw "video export timed out" }
+          if (Test-Path "$video.error.txt") { throw "video export failed: $(Get-Content "$video.error.txt" -Raw)" }
+          if (-not (Test-Path $video)) { throw "no video written (exit $($p.ExitCode))" }
+          $bytes = [IO.File]::ReadAllBytes($video)
+          "video: $($bytes.Length) bytes"
+          if ([Text.Encoding]::ASCII.GetString($bytes, 4, 4) -ne "ftyp") { throw "not an MP4" }
+          if ($bytes.Length -lt 200000) { throw "video too small" }
+          Copy-Item $video out/ci-video.mp4
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows

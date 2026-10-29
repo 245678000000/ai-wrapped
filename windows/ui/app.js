@@ -175,6 +175,7 @@ async function start() {
     const wait = 1400 - (performance.now() - began);
     if (wait > 0) await new Promise((res) => setTimeout(res, wait));
     await showReport(defaultPeriod());
+    if (TAURI && (await TAURI.core.invoke("is_auto_export"))) autoExport();
   } catch (err) {
     console.error(err);
     showEmpty();
@@ -204,9 +205,14 @@ function toast(text) {
   toast.timer = setTimeout(() => (t.hidden = true), 2200);
 }
 
-async function saveCard() {
+/** "AI年度报告-2026.png", "AI周报-2026-W44.mp4", … */
+function exportName(ext) {
   const p = state.report.period;
-  const name = `${p.isWeek ? "AI周报" : p.isShort ? "AI月报" : "AI年度报告"}-${p.fileTag}.png`;
+  return `${p.isWeek ? "AI周报" : p.isShort ? "AI月报" : "AI年度报告"}-${p.fileTag}.${ext}`;
+}
+
+async function saveCard() {
+  const name = exportName("png");
   if (TAURI) {
     const ok = await TAURI.core.invoke("save_png", { dataUrl: state.cardURL, fileName: name });
     if (ok) toast("已保存");
@@ -216,6 +222,47 @@ async function saveCard() {
     a.download = name;
     a.click();
   }
+}
+
+/** Asks where to save, renders the story to MP4 (progress on the button), then writes it. */
+let exportingVideo = false;
+async function saveVideo(button) {
+  if (exportingVideo) return;
+  const name = exportName("mp4");
+  if (TAURI && !(await TAURI.core.invoke("pick_video_path", { fileName: name }))) return;
+  exportingVideo = true;
+  const label = button.innerHTML;
+  button.disabled = true;
+  try {
+    const bytes = await exportVideo(state.report, state.cardURL, (f) => { button.textContent = `正在生成 ${Math.round(f * 100)}%…`; });
+    if (TAURI) {
+      await TAURI.core.invoke("save_video", bytes);
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
+      a.download = name;
+      a.click();
+    }
+    toast("小视频已导出");
+  } catch (err) {
+    console.error(err);
+    toast(`导出失败：${err.message || err}`);
+  } finally {
+    exportingVideo = false;
+    button.disabled = false;
+    button.innerHTML = label;
+  }
+}
+
+/** `--export-video PATH` (used by CI): export the default report without asking, then quit. */
+async function autoExport() {
+  let error = null;
+  try {
+    await TAURI.core.invoke("save_video", await exportVideo(state.report, state.cardURL));
+  } catch (err) {
+    error = String(err.message || err);
+  }
+  await TAURI.core.invoke("finish_auto_export", { error });
 }
 
 async function copyCard() {
@@ -249,6 +296,7 @@ document.addEventListener("click", async (e) => {
   if (act === "to-year") return showReport(defaultPeriod());
   if (act === "rescan") { closeMenu(); return start(); }
   if (act === "save") return saveCard();
+  if (act === "video") return saveVideo(e.target.closest("button"));
   if (act === "copy") return copyCard();
   if (act === "restart") return goTo(0, -1);
   if (e.target.closest("button, .menu, #titlebar, #bottombar")) return;

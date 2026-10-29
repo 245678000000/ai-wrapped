@@ -9,6 +9,7 @@ mod scan;
 mod util;
 
 use base64::Engine;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, State};
 use tauri_plugin_dialog::DialogExt;
@@ -16,6 +17,10 @@ use tauri_plugin_dialog::DialogExt;
 #[derive(Default)]
 struct AppState {
     scan: Mutex<Option<Arc<model::ScanResult>>>,
+    /// Where the next exported video goes, picked in the save dialog.
+    video_path: Mutex<Option<PathBuf>>,
+    /// `--export-video PATH`: the page exports the default report there on its own, then the app quits.
+    auto_export: Option<PathBuf>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -60,6 +65,50 @@ async fn save_png(app: tauri::AppHandle, data_url: String, file_name: String) ->
     let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(false) };
     std::fs::write(path, bytes).map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+/// Asks where to save the short video; the page renders it only once a place is chosen.
+#[tauri::command]
+async fn pick_video_path(app: tauri::AppHandle, state: State<'_, AppState>, file_name: String) -> Result<bool, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().set_file_name(&file_name).add_filter("MP4 视频", &["mp4"]).blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let path = picked.and_then(|p| p.into_path().ok());
+    let chosen = path.is_some();
+    *state.video_path.lock().unwrap() = path;
+    Ok(chosen)
+}
+
+/// Writes the MP4 the page encoded (sent as raw bytes) to the picked place and shows it in Explorer.
+#[tauri::command]
+fn save_video(request: tauri::ipc::Request<'_>, state: State<'_, AppState>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("没有收到视频数据".into()) };
+    let path = match &state.auto_export {
+        Some(path) => path.clone(),
+        None => state.video_path.lock().unwrap().take().ok_or("还没有选择保存位置")?,
+    };
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    if state.auto_export.is_none() {
+        let _ = std::process::Command::new("explorer").arg("/select,").arg(&path).spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn is_auto_export(state: State<'_, AppState>) -> bool {
+    state.auto_export.is_some()
+}
+
+/// Ends an `--export-video` run; a failure is written next to the video for CI to report.
+#[tauri::command]
+fn finish_auto_export(app: tauri::AppHandle, state: State<'_, AppState>, error: Option<String>) {
+    if let (Some(path), Some(error)) = (&state.auto_export, &error) {
+        let _ = std::fs::write(format!("{}.error.txt", path.display()), error);
+    }
+    app.exit(if error.is_some() { 1 } else { 0 });
 }
 
 /// Headless modes: `--dump` prints a summary, `--dump-json PATH` writes the report (used by CI).
@@ -143,14 +192,15 @@ fn main() {
     if run_cli(&args) {
         return;
     }
+    let auto_export = args.iter().position(|a| a == "--export-video").and_then(|i| args.get(i + 1)).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState::default())
+        .manage(AppState { auto_export, ..Default::default() })
         .setup(|app| {
             fit_to_screen(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_scan, get_report, save_png])
+        .invoke_handler(tauri::generate_handler![start_scan, get_report, save_png, pick_video_path, save_video, is_auto_export, finish_auto_export])
         .run(tauri::generate_context!())
         .expect("error while running AI Wrapped");
 }
