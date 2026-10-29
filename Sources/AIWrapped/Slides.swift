@@ -98,6 +98,7 @@ struct CoverSlide: View {
     var r: Report { ctx.report }
     var p: Period { r.period }
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         let palette = Slide.cover.palette(for: r)
@@ -106,7 +107,7 @@ struct CoverSlide: View {
                 Eyebrow(text: p.isShort ? "AI WRAPPED · \(p.isWeek ? "WEEKLY" : "MONTHLY")" : "AI WRAPPED", accent: palette.accent)
                     .reveal(0)
                 Spacer()
-                periodMenu.reveal(0.1)
+                periodMenu.reveal(0.1).opacity(videoTime == nil ? 1 : 0)
             }
             Spacer(minLength: 20)
             Text("你的").font(.heading(40)).opacity(0.85).reveal(0.15)
@@ -149,6 +150,7 @@ struct CoverSlide: View {
                     .padding(.leading, 4)
             }
             .reveal(0.65)
+            .opacity(videoTime == nil ? 1 : 0)
         }
     }
 
@@ -703,17 +705,19 @@ struct WeekdayBars: View {
     let values: [Int]
     @State private var grown = false
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         let maxV = Double(max(1, values.max() ?? 1))
         let top = values.indices.max { values[$0] < values[$1] } ?? 0
+        let g = videoTime.map { settled($0, delay: 0.5, response: 0.9) } ?? (grown || snapshot ? 1 : 0)
         HStack(alignment: .bottom, spacing: 12) {
             ForEach(0..<7, id: \.self) { i in
                 VStack(spacing: 6) {
                     Spacer(minLength: 0)
                     RoundedRectangle(cornerRadius: 5)
                         .fill(i == top ? Palette.rhythm.accent : .white.opacity(0.35))
-                        .frame(width: 30, height: max(4, 66 * ((grown || snapshot) ? Double(values[i]) / maxV : 0)))
+                        .frame(width: 30, height: max(4, 66 * Double(values[i]) / maxV * g))
                     Text("周" + Fmt.weekdayName(i)).font(.system(size: 12, weight: .medium)).opacity(i == top ? 1 : 0.6)
                 }
             }
@@ -761,10 +765,12 @@ struct RadialClock: View {
     let accent: Color
     @State private var progress = 0.0
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         let maxV = Double(max(1, values.max() ?? 1))
         let norm = values.map { Double($0) / maxV }
+        let grown = videoTime.map { settled($0, delay: 0.4, response: 1.4) } ?? (snapshot ? 1 : progress)
         let peak = values.indices.max { values[$0] < values[$1] } ?? 0
         let peakOnly = norm.enumerated().map { $0.offset == peak ? $0.element : 0 }
         GeometryReader { geo in
@@ -773,9 +779,9 @@ struct RadialClock: View {
             ZStack {
                 Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1)
                 Circle().strokeBorder(.white.opacity(0.06), lineWidth: 1).padding(size * 0.25)
-                RadialBars(values: norm, progress: snapshot ? 1 : progress, inner: inner)
+                RadialBars(values: norm, progress: grown, inner: inner)
                     .fill(.white.opacity(0.4))
-                RadialBars(values: peakOnly, progress: snapshot ? 1 : progress, inner: inner)
+                RadialBars(values: peakOnly, progress: grown, inner: inner)
                     .fill(accent)
                     .shadow(color: accent.opacity(0.8), radius: 14)
                 ForEach([0, 6, 12, 18], id: \.self) { h in
@@ -899,9 +905,11 @@ struct MonthlyBars: View {
     let accent: Color
     @State private var grown = false
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         let maxV = Double(max(1, months.map(\.tokens).max() ?? 1))
+        let g = videoTime.map { settled($0, delay: 0.6, response: 1.0) } ?? (grown || snapshot ? 1 : 0)
         let peak = months.indices.max { months[$0].tokens < months[$1].tokens } ?? 0
         let showEvery = max(1, months.count / 12)
         GeometryReader { geo in
@@ -911,7 +919,7 @@ struct MonthlyBars: View {
                         Spacer(minLength: 0)
                         RoundedRectangle(cornerRadius: 4)
                             .fill(i == peak ? accent : .white.opacity(0.3))
-                            .frame(height: max(3, (geo.size.height - 20) * ((grown || snapshot) ? Double(months[i].tokens) / maxV : 0)))
+                            .frame(height: max(3, (geo.size.height - 20) * Double(months[i].tokens) / maxV * g))
                         Text(i % showEvery == 0 ? months[i].label : " ")
                             .font(.system(size: 10, weight: .medium)).opacity(i == peak ? 1 : 0.55)
                             .lineLimit(1).fixedSize()
@@ -1029,6 +1037,8 @@ struct PersonaSlide: View {
 struct SummarySlide: View {
     let ctx: StoryContext
     @State private var toast: String?
+    @State private var videoProgress: Double?
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         HStack(spacing: 48) {
@@ -1042,23 +1052,28 @@ struct SummarySlide: View {
                 Text("这是你的\n\(summaryName)")
                     .font(.heading(40))
                     .lineSpacing(4)
-                Text(ctx.report.period.isWeek ? "保存成图片，下周再来看看有没有进步。"
-                     : ctx.report.period.isShort ? "保存成图片，下个月再来对比。" : "保存成图片发给朋友，或者明年再来对比。")
-                    .font(.system(size: 17)).opacity(0.7)
-                VStack(alignment: .leading, spacing: 12) {
-                    action("保存为图片…", "square.and.arrow.down", primary: true) {
-                        if CardExporter.save(ctx.report) { flash("已保存") }
+                // The exported video ends on this page, without the buttons.
+                if videoTime == nil {
+                    Text(ctx.report.period.isWeek ? "存成图片或小视频，下周再来看看有没有进步。"
+                         : ctx.report.period.isShort ? "存成图片或小视频，下个月再来对比。" : "存成图片或小视频发给朋友，或者明年再来对比。")
+                        .font(.system(size: 17)).opacity(0.7)
+                    VStack(alignment: .leading, spacing: 12) {
+                        action("保存为图片…", "square.and.arrow.down", primary: true) {
+                            if CardExporter.save(ctx.report) { flash("已保存") }
+                        }
+                        action(videoProgress.map { "正在生成 \(Int($0 * 100))%…" } ?? "导出小视频…", "film", action: exportVideo)
+                            .disabled(videoProgress != nil)
+                        action("复制图片", "doc.on.doc") {
+                            CardExporter.copy(ctx.report)
+                            flash("已复制到剪贴板")
+                        }
+                        action("从头再看一遍", "arrow.counterclockwise", action: ctx.restart)
                     }
-                    action("复制图片", "doc.on.doc") {
-                        CardExporter.copy(ctx.report)
-                        flash("已复制到剪贴板")
-                    }
-                    action("从头再看一遍", "arrow.counterclockwise", action: ctx.restart)
+                    .padding(.top, 8)
+                    Text(toast ?? " ")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0x9EE6FF))
                 }
-                .padding(.top, 8)
-                Text(toast ?? " ")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x9EE6FF))
                 Spacer().frame(height: 4)
                 Label("所有数据均在本机读取与计算，没有上传任何内容", systemImage: "lock.fill")
                     .font(.system(size: 13)).opacity(0.55)
@@ -1075,6 +1090,23 @@ struct SummarySlide: View {
         case .all: return "全部 AI 年度报告"
         case .thisWeek, .lastWeek: return "\(p.label) AI 周报"
         case .thisMonth: return "\(p.badge()) AI 月报"
+        }
+    }
+
+    /// Renders the whole story to an MP4, then shows it in Finder.
+    private func exportVideo() {
+        guard videoProgress == nil, let url = VideoExporter.chooseDestination(for: ctx.report) else { return }
+        videoProgress = 0
+        Task { @MainActor in
+            do {
+                try await VideoExporter.export(ctx.report, years: ctx.years, to: url) { videoProgress = $0 }
+                videoProgress = nil
+                flash("小视频已导出")
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch {
+                videoProgress = nil
+                flash("导出失败：\(error.localizedDescription)")
+            }
         }
     }
 

@@ -12,6 +12,25 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Video time (render one frame of a page's entrance, used for video export)
+
+private struct VideoTimeKey: EnvironmentKey { static let defaultValue: Double? = nil }
+
+extension EnvironmentValues {
+    /// Seconds since the page appeared while rendering video frames. Animated views read their
+    /// state from it instead of animating.
+    var videoTime: Double? {
+        get { self[VideoTimeKey.self] }
+        set { self[VideoTimeKey.self] = newValue }
+    }
+}
+
+/// How far a spring started `delay` seconds into the page has come by `t`, 0…1.
+func settled(_ t: Double, delay: Double, response: Double) -> Double {
+    let x = min(1, max(0, (t - delay) / (response * 1.25)))
+    return 1 - pow(1 - x, 3)
+}
+
 // MARK: - Color
 
 extension Color {
@@ -84,10 +103,13 @@ struct MeshBackground: View {
     let palette: Palette
     var animated = true
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         Group {
-            if snapshot || !animated {
+            if animated, let videoTime {
+                mesh(t: 2.4 + videoTime * 1.2)
+            } else if snapshot || !animated {
                 mesh(t: 2.4)
             } else {
                 TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
@@ -116,13 +138,14 @@ struct Reveal: ViewModifier {
     let delay: Double
     @State private var shown = false
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     func body(content: Content) -> some View {
-        let on = shown || snapshot
+        let p = videoTime.map { settled($0, delay: delay, response: 0.75) } ?? (shown || snapshot ? 1 : 0)
         content
-            .opacity(on ? 1 : 0)
-            .offset(y: on ? 0 : 26)
-            .blur(radius: on ? 0 : 10)
+            .opacity(p)
+            .offset(y: (1 - p) * 26)
+            .blur(radius: (1 - p) * 10)
             .onAppear {
                 withAnimation(.spring(response: 0.75, dampingFraction: 0.86).delay(delay)) { shown = true }
             }
@@ -151,12 +174,19 @@ struct CountUp: View {
     let format: (Double) -> String
     @State private var value: Double = 0
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
-        AnimatedNumberText(value: snapshot ? target : value, format: format)
+        AnimatedNumberText(value: videoTime.map { target * countCurve($0) } ?? (snapshot ? target : value), format: format)
             .onAppear {
                 withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: duration).delay(delay)) { value = target }
             }
+    }
+
+    /// Close to the live timing curve: a fast start and a long settle.
+    private func countCurve(_ t: Double) -> Double {
+        let x = min(1, max(0, (t - delay) / duration))
+        return 1 - pow(1 - x, 5)
     }
 }
 
@@ -168,15 +198,17 @@ struct GrowBar: View {
     var delay: Double = 0.3
     @State private var grown = false
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
+        let g = videoTime.map { settled($0, delay: delay, response: 1.0) } ?? (grown || snapshot ? 1 : 0)
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.1))
                 Capsule()
                     .fill(LinearGradient(colors: [color.opacity(0.75), color], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(height, geo.size.width * ((grown || snapshot) ? min(1, max(0, fraction)) : 0)))
-                    .opacity((grown || snapshot) ? 1 : 0)
+                    .frame(width: max(height, geo.size.width * min(1, max(0, fraction)) * g))
+                    .opacity(min(1, g * 3))
             }
         }
         .frame(height: height)

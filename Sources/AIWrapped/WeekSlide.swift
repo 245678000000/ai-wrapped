@@ -119,9 +119,11 @@ struct DailyChart: View {
     let accent: Color
     @State private var grown = false
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.videoTime) private var videoTime
 
     var body: some View {
         let isWeek = r.period.isWeek
+        let g = videoTime.map { settled($0, delay: 0.6, response: 1.0) } ?? (grown || snapshot ? 1 : 0)
         let maxTokens = Double(max(1, r.daily.map(\.stat.tokens).max() ?? 1))
         let peak = r.daily.indices.max { r.daily[$0].stat.tokens < r.daily[$1].stat.tokens }
             .flatMap { r.daily[$0].stat.tokens > 0 ? $0 : nil }
@@ -153,7 +155,7 @@ struct DailyChart: View {
                                         .fill(LinearGradient(colors: isPeak ? [accent, accent.opacity(0.5)] : [.white.opacity(0.45), .white.opacity(0.2)],
                                                              startPoint: .top, endPoint: .bottom))
                                         .shadow(color: isPeak ? accent.opacity(0.5) : .clear, radius: 12)
-                                        .frame(height: (grown || snapshot) ? height : 6)
+                                        .frame(height: 6 + (height - 6) * g)
                                 }
                             }
                             .frame(width: barWidth)
@@ -165,7 +167,7 @@ struct DailyChart: View {
                                         .foregroundStyle(accent)
                                         .fixedSize()
                                         .offset(y: -22)
-                                        .opacity((grown || snapshot) ? 1 : 0)
+                                        .opacity(g)
                                 }
                             }
                             label(for: d.day, index: i, isPeak: isPeak, today: today, isWeek: isWeek)

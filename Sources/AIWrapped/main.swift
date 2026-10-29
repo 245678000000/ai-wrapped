@@ -18,6 +18,20 @@ if let dir = argValue("--snapshot") {
     exit(0)
 }
 
+if let path = argValue("--video") {
+    Task { @MainActor in
+        await CLI.video(to: path, year: argValue("--year").flatMap(Int.init))
+        exit(0)
+    }
+    // Keep the real main thread running: rendering and the encoder both need it.
+    RunLoop.main.run()
+}
+
+if let dir = argValue("--video-stills") {
+    MainActor.assumeIsolated { CLI.videoStills(to: dir, year: argValue("--year").flatMap(Int.init)) }
+    exit(0)
+}
+
 if let path = argValue("--icon") {
     MainActor.assumeIsolated { CLI.renderIcon(to: path) }
     exit(0)

@@ -77,6 +77,40 @@ enum CLI {
         print("wrote \(slides.count) slides to \(dir)")
     }
 
+    /// Encodes the short video to `path`.
+    @MainActor
+    static func video(to path: String, year: Int?) async {
+        let (scan, r) = scanAndBuild(year: year)
+        let years = Report.availableYears(scan)
+        let began = Date()
+        do {
+            try await VideoExporter.export(r, years: years, to: URL(fileURLWithPath: path)) { _ in }
+            print("wrote \(path) (\(VideoTimeline(r, years: years).frameCount) frames) in \(String(format: "%.1f", Date().timeIntervalSince(began)))s")
+        } catch {
+            print("video failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Video frames as PNGs: each page mid-entrance and once it has settled, plus a crossfade.
+    @MainActor
+    static func videoStills(to dir: String, year: Int?) {
+        let (scan, r) = scanAndBuild(year: year)
+        let timeline = VideoTimeline(r, years: Report.availableYears(scan))
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let began = Date()
+        var count = 0
+        for (i, page) in timeline.pages.enumerated() {
+            let name = "\(dir)/\(String(format: "%02d", i))-\(timeline.slides[i])"
+            write(VideoFrame(timeline: timeline, time: page.start + 0.9), to: name + "-a.png", scale: 1)
+            write(VideoFrame(timeline: timeline, time: page.start + page.duration - VideoTimeline.fade - 0.05), to: name + "-b.png", scale: 1)
+            count += 2
+        }
+        let p = timeline.pages[2]
+        write(VideoFrame(timeline: timeline, time: p.start + p.duration - VideoTimeline.fade / 2), to: "\(dir)/fade.png", scale: 1)
+        let ms = Date().timeIntervalSince(began) * 1000 / Double(count + 1)
+        print("wrote \(count + 1) stills (\(Int(ms)) ms each at 1×), video \(String(format: "%.1f", timeline.duration))s, \(timeline.frameCount) frames")
+    }
+
     @MainActor
     static func renderIcon(to path: String) {
         write(AppIcon().environment(\.isSnapshot, true), to: path, scale: 1)
