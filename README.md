@@ -85,3 +85,12 @@ cd windows/src-tauri && cargo run --profile fast -- --dump --all  # 任意平台
 ## 操作
 
 ← → / 空格 / 点击翻页；封面右上角切换年份或重新扫描；最后一页可保存或复制分享卡片。
+
+
+## 社区
+
+本项目认可 [LINUX DO](https://linux.do/) 社区，感谢佬友们的交流与反馈。
+
+## 许可证
+
+本项目源码采用 [MIT License](LICENSE)。第三方依赖遵循各自的许可证。
